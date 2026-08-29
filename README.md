@@ -12,6 +12,7 @@
 | 看板 | 四列拖拽移动( HTML5 Drag & Drop ), 卡片展示类型/优先级/评论数/逾期标记 |
 | 协作 | 任务评论, 项目动态时间线, 个人仪表盘( 统计卡片 + 状态分布图 + 待办列表 ) |
 | 管理面板 | 超管后台: 系统概览( 用户/项目/任务/Git 仓库统计, 认证方式状态 ), 用户管理( 创建/编辑/禁用/重置密码/授权超管 ) |
+| BPMN 审批流 | 基于 **SpiffWorkflow**( Python BPMN 2.0 引擎 ): 多级审批链、条件网关自动路由、会签/或签( multi-instance + 完成条件, 满足即自动终止剩余实例 )、流程定义版本化( 在途实例锁定旧版 )、审批单中途持久化( 引擎状态序列化落库 )、审批中心( 我的待办/我发起的/时间线/撤回 ) |
 | Git | 创建项目时自动 `git init --bare` 初始化空仓库, 删除项目时同步清理; 也可事后补建 |
 
 ## 架构
@@ -106,12 +107,21 @@ PUT  /admin/users/{id}       编辑/禁用/重置密码/授权超管( 超管 )
 ## 测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q      # 36 个用例 (默认 SQLite)
+cd backend && .venv/bin/python -m pytest tests/ -q      # 42 个用例 (默认 SQLite, Python 3.11+)
 # 在 PostgreSQL 上跑同一套测试:
 TEST_DATABASE_URL=postgresql+psycopg2://prjhub:prjhub_secret@127.0.0.1:5432/prjhub_test \
   .venv/bin/python -m pytest tests/ -q
 cd frontend && npm run build                            # 构建校验
 ```
+
+## BPMN 审批流( SpiffWorkflow )
+
+引擎访问被隔离在 `app/services/bpmn_engine.py` 单一适配层, 业务代码不直接依赖引擎 API, 未来可替换引擎。
+
+- 内置「通用审批流」模板: 一级审批 → (驳回即结束) → 金额条件网关 → 大额走会签( N 人并行, 2 人通过即通过并自动终止其余实例 ) / 小额走二级审批
+- 流程变量约定: `amount`( 金额条件 )、`approver_l1` / `approver_l2`( 各级审批人 user id )、`countersigners`( 会签人列表 )、`cs_total` / `cs_pass`
+- 每次审批动作 = 反序列化引擎状态 → 注入变量( approved/rejected/completed_count ) → 推进 → 重新序列化落库; 待办/历史通过 `approval_tasks` 镜像表同步
+- 部署新 BPMN 自动生成新版本, 在途审批单锁定其发起时版本跑完 ( 旧版跑完策略 )
 
 ## 目录结构
 

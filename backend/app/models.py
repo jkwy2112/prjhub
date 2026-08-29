@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -105,6 +106,66 @@ class SystemConfig(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
+# ---------- BPMN approval engine (SpiffWorkflow) ----------
+
+
+class ProcessDefinition(Base):
+    """Versioned BPMN process definition. Latest version of a key is active."""
+    __tablename__ = "process_definitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    name: Mapped[str] = mapped_column(String(128), default="")
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    bpmn_xml: Mapped[str] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ApprovalTicket(Base):
+    """An approval request running on a (pinned) process definition version."""
+    __tablename__ = "approval_tickets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str] = mapped_column(String(255))
+    project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"),
+                                                      nullable=True)
+    task_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"),
+                                                   nullable=True)
+    definition_id: Mapped[int] = mapped_column(ForeignKey("process_definitions.id"))
+    definition_version: Mapped[int] = mapped_column(Integer, default=1)
+    submitted_by: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    variables: Mapped[dict] = mapped_column(JSON, default=dict)
+    engine_state: Mapped[bytes] = mapped_column(LargeBinary)  # serialized BpmnWorkflow
+    status: Mapped[str] = mapped_column(String(16), default="running", index=True)  # running/approved/rejected/cancelled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    tasks: Mapped[List["ApprovalTask"]] = relationship(
+        back_populates="ticket", cascade="all, delete-orphan", order_by="ApprovalTask.id"
+    )
+
+
+class ApprovalTask(Base):
+    """Mirror of an engine user task: pending todo or audit record once completed."""
+    __tablename__ = "approval_tasks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_id: Mapped[int] = mapped_column(ForeignKey("approval_tickets.id", ondelete="CASCADE"), index=True)
+    engine_task_id: Mapped[str] = mapped_column(String(64), index=True)
+    node_id: Mapped[str] = mapped_column(String(64), default="")
+    node_name: Mapped[str] = mapped_column(String(128), default="")
+    assignee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"),
+                                                       nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending/completed/cancelled
+    action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # approve/reject
+    comment: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    ticket: Mapped[ApprovalTicket] = relationship(back_populates="tasks")
 
 
 class User(Base):

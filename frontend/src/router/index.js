@@ -11,6 +11,7 @@ const routes = [
       { path: 'projects', name: 'projects', component: () => import('../views/Projects.vue') },
       { path: 'projects/:id', name: 'project-detail', component: () => import('../views/ProjectDetail.vue') },
       { path: 'my-tasks', name: 'my-tasks', component: () => import('../views/MyTasks.vue') },
+      { path: 'approvals', name: 'approvals', component: () => import('../views/Approvals.vue') },
       {
         path: 'admin',
         component: () => import('../views/admin/AdminLayout.vue'),

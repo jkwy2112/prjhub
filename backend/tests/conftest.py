@@ -55,17 +55,19 @@ def admin_headers(client):
 
 
 def make_user(client: TestClient, username: str, name: str = "", superuser_by_admin=True) -> dict:
-    """Register a normal local user through WeCom-mocked provisioning (no register API)."""
-    from app.db import SessionLocal
+    """Get-or-create a normal local user (shared test db safe)."""
     from app.core.security import hash_password
+    from app.db import SessionLocal
     from app.models import AuthType, User
 
     db = SessionLocal()
     try:
-        user = User(username=username, password_hash=hash_password("pass123"), name=name or username,
-                    auth_type=AuthType.local)
-        db.add(user)
-        db.commit()
+        user = db.query(User).filter(User.username == username).first()
+        if user is None:
+            user = User(username=username, password_hash=hash_password("pass123"),
+                        name=name or username, auth_type=AuthType.local)
+            db.add(user)
+            db.commit()
         return {"id": user.id, "username": user.username}
     finally:
         db.close()
