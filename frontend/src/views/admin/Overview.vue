@@ -35,18 +35,12 @@
       </el-col>
       <el-col :span="8">
         <el-card shadow="never">
-          <template #header><b>任务状态分布 (全系统, 按默认工作流)</b></template>
-          <div v-for="s in wf.statuses" :key="s.key" class="dist-row">
-            <el-tag :color="s.color" style="border: none; color: #fff" size="small">{{ s.name }}</el-tag>
-            <el-progress :percentage="pct(stats.task_status_distribution?.[s.key] || 0)"
-              :color="s.color" style="flex: 1; margin: 0 10px" />
-            <span class="dist-count">{{ stats.task_status_distribution?.[s.key] || 0 }}</span>
-          </div>
-          <div v-if="stats.task_status_distribution?.other" class="dist-row">
-            <el-tag style="border: none; color: #fff" size="small" :color="'#c0c4cc'">其他</el-tag>
-            <el-progress :percentage="pct(stats.task_status_distribution.other)"
-              :color="'#c0c4cc'" style="flex: 1; margin: 0 10px" />
-            <span class="dist-count">{{ stats.task_status_distribution.other }}</span>
+          <template #header><b>任务状态分布 (全系统)</b></template>
+          <div v-for="(m, k) in STATUS_META" :key="k" class="dist-row">
+            <el-tag :color="m.color" style="border: none; color: #fff" size="small">{{ m.label }}</el-tag>
+            <el-progress :percentage="pct(stats.task_status_distribution?.[k] || 0)"
+              :color="m.color" style="flex: 1; margin: 0 10px" />
+            <span class="dist-count">{{ stats.task_status_distribution?.[k] || 0 }}</span>
           </div>
         </el-card>
       </el-col>
