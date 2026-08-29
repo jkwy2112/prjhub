@@ -11,6 +11,7 @@ from app.services import bpmn_engine
 logger = logging.getLogger(__name__)
 
 GENERIC_KEY = "generic_approval"
+PARALLEL_KEY = "parallel_approval"
 
 # end event id -> ticket status
 END_STATUS = {"end_approved": "approved", "end_rejected": "rejected"}
@@ -37,10 +38,21 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str) -> ProcessDefinition
 
 
 def seed_templates(db: Session) -> None:
-    if not db.query(ProcessDefinition).filter(ProcessDefinition.key == GENERIC_KEY).first():
-        from app.services.bpmn_templates import GENERIC_APPROVAL_BPMN
+    """Deploy built-in templates on first run; redeploy as a new version when XML changes."""
+    from app.services.bpmn_templates import GENERIC_APPROVAL_BPMN, PARALLEL_APPROVAL_BPMN
 
-        deploy(db, GENERIC_KEY, "通用审批流(条件金额分支/会签或签)", GENERIC_APPROVAL_BPMN)
+    for key, name, xml in (
+        (GENERIC_KEY, "通用审批流(条件金额分支/会签或签)", GENERIC_APPROVAL_BPMN),
+        (PARALLEL_KEY, "并行多分支审批流(财务+技术同时审批/汇聚)", PARALLEL_APPROVAL_BPMN),
+    ):
+        current = (
+            db.query(ProcessDefinition)
+            .filter(ProcessDefinition.key == key, ProcessDefinition.is_active.is_(True))
+            .order_by(ProcessDefinition.version.desc())
+            .first()
+        )
+        if current is None or current.bpmn_xml != xml:
+            deploy(db, key, name, xml)
 
 
 def active_definition(db: Session, key: str) -> ProcessDefinition:

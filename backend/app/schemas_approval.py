@@ -52,6 +52,8 @@ class TicketOut(BaseModel):
     project_id: Optional[int]
     task_id: Optional[int]
     definition_id: int
+    definition_key: str = ""
+    definition_name: str = ""
     definition_version: int
     submitted_by: int
     variables: dict

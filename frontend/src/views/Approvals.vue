@@ -46,8 +46,8 @@
           <el-tag size="small" :type="statusMeta(row.status).type">{{ statusMeta(row.status).label }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="流程" width="140">
-        <template #default="{ row }">通用审批流 v{{ row.definition_version }}</template>
+      <el-table-column label="流程" width="200">
+        <template #default="{ row }">{{ row.definition_name || '通用审批流' }} v{{ row.definition_version }}</template>
       </el-table-column>
       <el-table-column label="金额" width="100">
         <template #default="{ row }">￥{{ row.variables?.amount ?? '-' }}</template>
@@ -71,29 +71,58 @@
     <!-- 发起审批 -->
     <el-dialog v-model="createVisible" title="发起审批" width="560px">
       <el-form :model="form" label-width="100px">
+        <el-form-item label="流程模板">
+          <el-select v-model="form.definition_key" style="width: 100%">
+            <el-option v-for="d in definitions" :key="d.key" :value="d.key" :label="d.name" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="标题" required><el-input v-model="form.title" maxlength="255" /></el-form-item>
-        <el-form-item label="金额" required>
-          <el-input-number v-model="form.amount" :min="0" :step="100" />
-          <span class="form-tip">金额 &gt; 1000 走「会签」分支</span>
-        </el-form-item>
-        <el-form-item label="一级审批人" required>
-          <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
-            placeholder="搜索用户" style="width: 100%">
-            <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="二级审批人">
-          <el-select v-model="form.approver_l2" filterable remote :remote-method="searchUsers" clearable
-            placeholder="小额分支的二级审批人" style="width: 100%">
-            <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="会签人">
-          <el-select v-model="form.countersigners" multiple filterable remote :remote-method="searchUsers"
-            placeholder="大额分支会签(2人通过即过)" style="width: 100%">
-            <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-          </el-select>
-        </el-form-item>
+
+        <template v-if="form.definition_key === 'parallel_approval'">
+          <el-form-item label="一级审批人" required>
+            <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
+              placeholder="搜索用户" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="财务审批人" required>
+            <el-select v-model="form.approver_fin" filterable remote :remote-method="searchUsers"
+              placeholder="并行分支 A" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="技术评审人" required>
+            <el-select v-model="form.approver_tech" filterable remote :remote-method="searchUsers"
+              placeholder="并行分支 B" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+        </template>
+
+        <template v-else>
+          <el-form-item label="金额" required>
+            <el-input-number v-model="form.amount" :min="0" :step="100" />
+            <span class="form-tip">金额 &gt; 1000 走「会签」分支</span>
+          </el-form-item>
+          <el-form-item label="一级审批人" required>
+            <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
+              placeholder="搜索用户" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="二级审批人">
+            <el-select v-model="form.approver_l2" filterable remote :remote-method="searchUsers" clearable
+              placeholder="小额分支的二级审批人" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="会签人">
+            <el-select v-model="form.countersigners" multiple filterable remote :remote-method="searchUsers"
+              placeholder="大额分支会签(2人通过即过)" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
@@ -155,8 +184,13 @@ const userMap = reactive({})
 const createVisible = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
+const definitions = ref([])
 
-const form = reactive({ title: '', amount: 100, approver_l1: null, approver_l2: null, countersigners: [] })
+const form = reactive({
+  definition_key: 'generic_approval', title: '', amount: 100,
+  approver_l1: null, approver_l2: null, countersigners: [],
+  approver_fin: null, approver_tech: null,
+})
 
 const STATUS = {
   running: { label: '审批中', type: 'primary' },
@@ -178,9 +212,14 @@ function timelineColor(t) {
 async function load() {
   loading.value = true
   try {
-    const [p, s] = await Promise.all([api.get('/approvals/my-pending'), api.get('/approvals/my-submitted')])
+    const [p, s, d] = await Promise.all([
+      api.get('/approvals/my-pending'),
+      api.get('/approvals/my-submitted'),
+      api.get('/approvals/definitions'),
+    ])
     pending.value = p.data
     submitted.value = s.data
+    definitions.value = d.data
     const ids = new Set()
     p.data.forEach((x) => ids.add(x.ticket.submitted_by))
     s.data.forEach((x) => { ids.add(x.submitted_by); x.tasks.forEach((t) => t.assignee_id && ids.add(t.assignee_id)) })
@@ -204,28 +243,42 @@ async function searchUsers(q) {
 }
 
 function openCreate() {
-  Object.assign(form, { title: '', amount: 100, approver_l1: null, approver_l2: null, countersigners: [] })
+  Object.assign(form, {
+    definition_key: definitions.value[0]?.key || 'generic_approval', title: '', amount: 100,
+    approver_l1: null, approver_l2: null, countersigners: [], approver_fin: null, approver_tech: null,
+  })
   createVisible.value = true
 }
 
 async function submit() {
   if (!form.title.trim() || !form.approver_l1) return ElMessage.warning('请填写标题和一级审批人')
-  if (form.amount > 1000 && !form.countersigners.length) {
-    return ElMessage.warning('大额审批需选择会签人')
+  let variables
+  if (form.definition_key === 'parallel_approval') {
+    if (!form.approver_fin || !form.approver_tech) return ElMessage.warning('并行分支审批人不能为空')
+    variables = {
+      approver_l1: form.approver_l1,
+      approver_fin: form.approver_fin,
+      approver_tech: form.approver_tech,
+    }
+  } else {
+    if (form.amount > 1000 && !form.countersigners.length) {
+      return ElMessage.warning('大额审批需选择会签人')
+    }
+    variables = {
+      amount: form.amount,
+      approver_l1: form.approver_l1,
+      approver_l2: form.approver_l2 || form.approver_l1,
+      countersigners: form.countersigners,
+      cs_total: form.countersigners.length,
+      cs_pass: 2,
+    }
   }
   creating.value = true
   try {
     await api.post('/approvals', {
-      definition_key: 'generic_approval',
+      definition_key: form.definition_key,
       title: form.title,
-      variables: {
-        amount: form.amount,
-        approver_l1: form.approver_l1,
-        approver_l2: form.approver_l2 || form.approver_l1,
-        countersigners: form.countersigners,
-        cs_total: form.countersigners.length,
-        cs_pass: 2,
-      },
+      variables,
     })
     ElMessage.success('审批已发起')
     createVisible.value = false

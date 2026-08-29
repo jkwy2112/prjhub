@@ -46,6 +46,15 @@ def create_ticket(body: TicketCreate, db: Session = Depends(get_db),
     return _detail(db, ticket, user)
 
 
+def _ticket_out(db: Session, ticket: ApprovalTicket) -> TicketOut:
+    out = TicketOut.model_validate(ticket)
+    definition = db.get(ProcessDefinition, ticket.definition_id)
+    if definition:
+        out.definition_key = definition.key
+        out.definition_name = definition.name
+    return out
+
+
 @router.get("/my-pending", response_model=List[MyPendingOut], summary="我的待审批")
 def my_pending(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     rows = (
@@ -61,7 +70,7 @@ def my_pending(db: Session = Depends(get_db), user: User = Depends(get_current_u
         MyPendingOut(
             task_id=row.id,
             node_name=row.node_name,
-            ticket=TicketOut.model_validate(ticket),
+            ticket=_ticket_out(db, ticket),
         )
         for row, ticket in rows
     ]
@@ -81,6 +90,10 @@ def my_submitted(db: Session = Depends(get_db), user: User = Depends(get_current
 
 def _detail(db: Session, ticket: ApprovalTicket, user: User) -> TicketDetail:
     detail = TicketDetail.model_validate(ticket)
+    definition = db.get(ProcessDefinition, ticket.definition_id)
+    if definition:
+        detail.definition_key = definition.key
+        detail.definition_name = definition.name
     detail.tasks = [
         ApprovalTaskOut.model_validate(t)
         for t in db.query(ApprovalTask)
