@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models import AuthType, ProjectRole, TaskPriority, TaskStatus, TaskType
+from app.models import AuthType, ProjectRole, TaskPriority, TaskType
 
 
 # ---------- auth ----------
@@ -119,7 +119,7 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     type: Optional[TaskType] = None
-    status: Optional[TaskStatus] = None
+    status: Optional[str] = None
     priority: Optional[TaskPriority] = None
     assignee_id: Optional[int] = None
     due_date: Optional[datetime] = None
@@ -149,7 +149,7 @@ class TaskOut(BaseModel):
     title: str
     description: str
     type: TaskType
-    status: TaskStatus
+    status: str
     priority: TaskPriority
     assignee_id: Optional[int]
     project_id: int

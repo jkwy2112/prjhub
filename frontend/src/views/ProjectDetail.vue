@@ -17,15 +17,15 @@
     <el-tabs v-model="tab">
       <el-tab-pane label="看板" name="kanban">
         <div class="kanban" v-loading="loadingTasks">
-          <div v-for="status in STATUS_ORDER" :key="status" class="kanban-col"
-            @dragover.prevent @drop="onDrop($event, status)">
+          <div v-for="col in wf.statuses" :key="col.key" class="kanban-col"
+            @dragover.prevent @drop="onDrop($event, col.key)">
             <div class="kanban-col-head">
-              <el-tag :color="STATUS_META[status].color" effect="dark" style="border: none" size="small">
-                {{ STATUS_META[status].label }}
+              <el-tag :color="col.color" effect="dark" style="border: none" size="small">
+                {{ col.name }}
               </el-tag>
-              <span class="kanban-count">{{ byStatus[status]?.length || 0 }}</span>
+              <span class="kanban-count">{{ byStatus[col.key]?.length || 0 }}</span>
             </div>
-            <div v-for="t in byStatus[status]" :key="t.id" class="kanban-card" draggable="true"
+            <div v-for="t in byStatus[col.key] || []" :key="t.id" class="kanban-card" draggable="true"
               @dragstart="onDragStart($event, t)" @click="openTask(t)">
               <div class="card-title">
                 <el-tag effect="dark" size="small" :color="TYPE_META[t.type].color" style="border: none">
@@ -38,7 +38,7 @@
                 <el-tag size="small" :type="PRIORITY_META[t.priority].type">
                   {{ PRIORITY_META[t.priority].label }}
                 </el-tag>
-                <span v-if="t.due_date && t.status !== 'done' && isOverdue(t)" class="overdue">已逾期</span>
+                <span v-if="t.due_date && !wf.isDone(t.status) && isOverdue(t)" class="overdue">已逾期</span>
                 <span class="card-meta">
                   <el-icon><ChatDotRound /></el-icon>{{ t.comments_count }}
                   <el-avatar v-if="memberMap[t.assignee_id]" :size="20" style="margin-left: 6px; background: #409EFF">
@@ -47,7 +47,7 @@
                 </span>
               </div>
             </div>
-            <el-button v-if="status === 'todo'" text size="small" class="add-card" @click="openCreate">
+            <el-button v-if="col.is_initial" text size="small" class="add-card" @click="openCreate">
               + 添加任务
             </el-button>
           </div>
@@ -58,7 +58,7 @@
         <div class="list-toolbar">
           <el-input v-model="listQuery" placeholder="搜索标题或编号" clearable style="width: 240px" :prefix-icon="Search" />
           <el-select v-model="listStatus" placeholder="全部状态" clearable style="width: 140px">
-            <el-option v-for="(m, k) in STATUS_META" :key="k" :value="k" :label="m.label" />
+            <el-option v-for="s in wf.statuses" :key="s.key" :value="s.key" :label="s.name" />
           </el-select>
           <el-select v-model="listAssignee" placeholder="全部负责人" clearable style="width: 140px">
             <el-option v-for="m in members" :key="m.user_id" :value="m.user_id"
@@ -79,8 +79,8 @@
           </el-table-column>
           <el-table-column label="状态" width="90">
             <template #default="{ row }">
-              <el-tag size="small" :color="STATUS_META[row.status].color" style="border: none; color: #fff">
-                {{ STATUS_META[row.status].label }}
+              <el-tag size="small" :color="wf.colorOf(row.status)" style="border: none; color: #fff">
+                {{ wf.labelOf(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -229,9 +229,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, FolderOpened, ChatDotRound } from '@element-plus/icons-vue'
 import api from '../api'
-import { STATUS_META, STATUS_ORDER, TYPE_META, PRIORITY_META, ROLE_META, fmtDate, fmtDateTime } from '../constants'
+import { TYPE_META, PRIORITY_META, ROLE_META, fmtDate, fmtDateTime } from '../constants'
+import { useWorkflowStore } from '../stores/workflow'
 import TaskDialog from '../components/TaskDialog.vue'
 import TaskDrawer from '../components/TaskDrawer.vue'
+
+const wf = useWorkflowStore()
 
 const route = useRoute()
 const router = useRouter()
@@ -265,8 +268,12 @@ const canAdmin = computed(() => ['owner', 'admin'].includes(project.value?.my_ro
 const memberMap = computed(() => Object.fromEntries(members.value.map((m) => [m.user_id, m])))
 const byStatus = computed(() => {
   const map = {}
-  for (const s of STATUS_ORDER) map[s] = []
-  for (const t of tasks.value) (map[t.status] || map.todo).push(t)
+  for (const s of wf.statuses) map[s.key] = []
+  const fallback = wf.initialKey
+  for (const t of tasks.value) {
+    if (map[t.status]) map[t.status].push(t)
+    else if (map[fallback]) map[fallback].push(t)
+  }
   return map
 })
 const filteredTasks = computed(() =>
@@ -283,7 +290,7 @@ const filteredTasks = computed(() =>
 )
 
 function isOverdue(t) {
-  return t.due_date && new Date(t.due_date) < new Date() && t.status !== 'done'
+  return t.due_date && new Date(t.due_date) < new Date() && !wf.isDone(t.status)
 }
 
 async function loadProject() {
@@ -397,7 +404,7 @@ async function deleteProject() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadProject(), loadTasks(), loadMembers(), loadActivities()])
+  await Promise.all([wf.fetch(), loadProject(), loadTasks(), loadMembers(), loadActivities()])
   if (route.query.task) {
     drawerTaskId.value = Number(route.query.task)
     taskDrawer.value = true

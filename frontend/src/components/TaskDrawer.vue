@@ -17,7 +17,9 @@
         <div class="meta-row">
           <span class="meta-label">状态</span>
           <el-select :model-value="task.status" size="small" style="width: 130px" @change="onStatusChange">
-            <el-option v-for="(meta, key) in STATUS_META" :key="key" :value="key" :label="meta.label" />
+            <el-option :value="task.status" :label="wf.labelOf(task.status) + ' (当前)'" disabled />
+            <el-option v-for="key in wf.nextKeysOf(task.status)" :key="key" :value="key"
+              :label="wf.labelOf(key)" />
           </el-select>
         </div>
         <div class="meta-row">
@@ -79,7 +81,10 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
-import { STATUS_META, TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
+import { TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
+import { useWorkflowStore } from '../stores/workflow'
+
+const wf = useWorkflowStore()
 
 const props = defineProps({
   modelValue: Boolean,

@@ -36,11 +36,11 @@
           <el-col :span="8">
             <el-card shadow="never">
               <template #header><b>任务状态分布 (全系统)</b></template>
-              <div v-for="(meta, key) in STATUS_META" :key="key" class="dist-row">
-                <el-tag :color="meta.color" style="border: none; color: #fff" size="small">{{ meta.label }}</el-tag>
-                <el-progress :percentage="pct(stats.task_status_distribution?.[key] || 0)"
-                  :color="meta.color" style="flex: 1; margin: 0 10px" />
-                <span class="dist-count">{{ stats.task_status_distribution?.[key] || 0 }}</span>
+              <div v-for="s in wf.statuses" :key="s.key" class="dist-row">
+                <el-tag :color="s.color" style="border: none; color: #fff" size="small">{{ s.name }}</el-tag>
+                <el-progress :percentage="pct(stats.task_status_distribution?.[s.key] || 0)"
+                  :color="s.color" style="flex: 1; margin: 0 10px" />
+                <span class="dist-count">{{ stats.task_status_distribution?.[s.key] || 0 }}</span>
               </div>
             </el-card>
           </el-col>
@@ -115,6 +115,115 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
+      <el-tab-pane label="工作流" name="workflow">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+          title="任务状态与流转规则, 保存后立即对全部项目的看板/列表生效; 删除仍有任务的状态时, 这些任务会自动迁移到初始状态" />
+        <el-card shadow="never" v-loading="wfLoading">
+          <div v-for="(s, idx) in wfEditable" :key="idx" class="wf-row">
+            <div class="wf-main">
+              <el-color-picker v-model="s.color" size="small" />
+              <el-input v-model="s.name" size="small" style="width: 120px" maxlength="32" placeholder="状态名" />
+              <el-radio-group :model-value="wfInitialKey" size="small" @update:model-value="setInitial(idx)">
+                <el-radio-button :value="s.key" :disabled="!s.is_initial && wfHasInitial !== idx">
+                  <span v-if="s.is_initial">初始状态</span>
+                  <span v-else>设为初始</span>
+                </el-radio-button>
+              </el-radio-group>
+              <el-checkbox v-model="s.is_done" size="small">完成态</el-checkbox>
+              <el-select v-model="s.next_keys" multiple size="small" placeholder="可流转到" style="min-width: 220px">
+                <el-option v-for="o in wfEditable" :key="o.key" :value="o.key" :label="o.name"
+                  :disabled="o.key === s.key" />
+              </el-select>
+              <span v-if="wf.usedKeys.includes(s.key)" class="wf-used">有任务使用</span>
+            </div>
+            <div class="wf-ops">
+              <el-button text size="small" :disabled="idx === 0" @click="moveWf(idx, -1)">上移</el-button>
+              <el-button text size="small" :disabled="idx === wfEditable.length - 1" @click="moveWf(idx, 1)">下移</el-button>
+              <el-button text type="danger" size="small" @click="removeWf(idx)">删除</el-button>
+            </div>
+          </div>
+          <div style="margin-top: 14px; display: flex; gap: 10px">
+            <el-button :icon="Plus" @click="addWf">新增状态</el-button>
+            <el-button type="primary" :loading="wfSaving" @click="saveWf">保存工作流</el-button>
+            <el-button @click="resetWf" :loading="wfSaving">恢复默认</el-button>
+          </div>
+        </el-card>
+      </el-tab-pane>
+
+      <el-tab-pane label="认证配置" name="authconfig">
+        <el-row :gutter="16">
+          <el-col :span="12">
+            <el-card shadow="never">
+              <template #header>
+                <div style="display: flex; justify-content: space-between; align-items: center">
+                  <b>LDAP 域认证</b>
+                  <el-switch v-model="ldapForm.enabled" active-text="启用" />
+                </div>
+              </template>
+              <el-form :model="ldapForm" label-width="110px" size="small">
+                <el-form-item label="服务器">
+                  <el-input v-model="ldapForm.server" placeholder="ldap://ldap.corp.com:389" />
+                </el-form-item>
+                <el-form-item label="启用 SSL">
+                  <el-switch v-model="ldapForm.use_ssl" />
+                </el-form-item>
+                <el-form-item label="Bind DN">
+                  <el-input v-model="ldapForm.bind_dn" placeholder="cn=admin,dc=corp,dc=com" />
+                </el-form-item>
+                <el-form-item label="Bind 密码">
+                  <el-input v-model="ldapForm.bind_password" type="password" show-password placeholder="服务账号密码" />
+                </el-form-item>
+                <el-form-item label="搜索基准">
+                  <el-input v-model="ldapForm.search_base" placeholder="ou=people,dc=corp,dc=com" />
+                </el-form-item>
+                <el-form-item label="搜索过滤器">
+                  <el-input v-model="ldapForm.search_filter" placeholder="(uid={login})" />
+                </el-form-item>
+                <el-form-item label="用户名属性">
+                  <el-input v-model="ldapForm.attr_username" style="width: 130px" placeholder="uid" />
+                </el-form-item>
+                <el-form-item label="姓名属性">
+                  <el-input v-model="ldapForm.attr_display_name" style="width: 130px" placeholder="cn" />
+                </el-form-item>
+                <el-form-item label="邮箱属性">
+                  <el-input v-model="ldapForm.attr_email" style="width: 130px" placeholder="mail" />
+                </el-form-item>
+                <div style="display: flex; gap: 10px">
+                  <el-button type="primary" size="small" :loading="ldapSaving" @click="saveLdap">保存</el-button>
+                  <el-button size="small" :loading="ldapTesting" @click="testLdap">测试连接</el-button>
+                </div>
+              </el-form>
+            </el-card>
+          </el-col>
+          <el-col :span="12">
+            <el-card shadow="never">
+              <template #header>
+                <div style="display: flex; justify-content: space-between; align-items: center">
+                  <b>企业微信</b>
+                  <el-switch v-model="wecomForm.enabled" active-text="启用" />
+                </div>
+              </template>
+              <el-form :model="wecomForm" label-width="110px" size="small">
+                <el-form-item label="Corp ID">
+                  <el-input v-model="wecomForm.corp_id" placeholder="ww1234567890abcdef" />
+                </el-form-item>
+                <el-form-item label="Corp Secret">
+                  <el-input v-model="wecomForm.corp_secret" type="password" show-password />
+                </el-form-item>
+                <el-form-item label="Agent ID">
+                  <el-input v-model="wecomForm.agent_id" placeholder="1000002" />
+                </el-form-item>
+                <div style="display: flex; gap: 10px">
+                  <el-button type="primary" size="small" :loading="wecomSaving" @click="saveWecom">保存</el-button>
+                  <el-button size="small" :loading="wecomTesting" @click="testWecom">测试连接</el-button>
+                </div>
+              </el-form>
+              <el-alert style="margin-top: 14px" type="info" :closable="false"
+                title="保存启用后, 登录页将出现「企业微信登录」按钮, 授权回调地址需配置为 {站点地址}/login" />
+            </el-card>
+          </el-col>
+        </el-row>
+      </el-tab-pane>
     </el-tabs>
 
     <el-dialog v-model="createDialog" title="新建用户" width="480px">
@@ -161,10 +270,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import api from '../api'
-import { STATUS_META, fmtDate } from '../constants'
+import { TYPE_META, PRIORITY_META, fmtDate } from '../constants'
 import { useAuthStore } from '../stores/auth'
+import { useWorkflowStore } from '../stores/workflow'
 
 const auth = useAuthStore()
+const wf = useWorkflowStore()
 const me = computed(() => auth.user || {})
 const loading = ref(false)
 const saving = ref(false)
@@ -266,10 +377,156 @@ async function toggleActive(row) {
   loadUsers()
 }
 
+// ---------- workflow editor ----------
+
+const wfEditable = ref([])
+const wfLoading = ref(false)
+const wfSaving = ref(false)
+
+const wfInitialKey = computed(() => wfEditable.value.find((s) => s.is_initial)?.key || '')
+const wfHasInitial = computed(() => wfEditable.value.findIndex((s) => s.is_initial))
+
+function syncWfEditable() {
+  wfEditable.value = wf.statuses.map((s) => ({ ...s, next_keys: [...(s.next_keys || [])] }))
+}
+
+function setInitial(idx) {
+  wfEditable.value.forEach((s, i) => (s.is_initial = i === idx))
+}
+
+function moveWf(idx, delta) {
+  const arr = wfEditable.value
+  const [item] = arr.splice(idx, 1)
+  arr.splice(idx + delta, 0, item)
+}
+
+function removeWf(idx) {
+  wfEditable.value.splice(idx, 1)
+}
+
+function addWf() {
+  const n = wfEditable.value.length + 1
+  wfEditable.value.push({
+    key: `custom_${Date.now().toString(36)}`,
+    name: `新状态${n}`,
+    color: '#9254de',
+    is_initial: false,
+    is_done: false,
+    next_keys: [],
+  })
+}
+
+async function saveWf() {
+  wfSaving.value = true
+  try {
+    const payload = wfEditable.value.map((s) => ({
+      key: s.key, name: s.name, color: s.color,
+      is_initial: !!s.is_initial, is_done: !!s.is_done,
+      next_keys: (s.next_keys || []).filter((k) => k !== s.key && wfEditable.value.some((x) => x.key === k)),
+    }))
+    const { data } = await api.put('/workflow', { statuses: payload })
+    if (data.migrated) ElMessage.warning(`已保存, ${data.migrated} 个任务被迁移到初始状态`)
+    else ElMessage.success('工作流已保存')
+    await wf.fetch(true)
+    syncWfEditable()
+  } catch { /* interceptor */ } finally {
+    wfSaving.value = false
+  }
+}
+
+async function resetWf() {
+  await ElMessageBox.confirm('恢复为默认工作流 (待办/进行中/测试中/已完成)? 自定义状态将被移除, 其任务迁回初始状态',
+    '恢复默认', { type: 'warning' })
+  wfSaving.value = true
+  try {
+    await api.post('/workflow/reset')
+    ElMessage.success('已恢复默认工作流')
+    await wf.fetch(true)
+    syncWfEditable()
+  } finally {
+    wfSaving.value = false
+  }
+}
+
+// ---------- auth config (LDAP / WeCom) ----------
+
+const ldapForm = reactive({
+  enabled: false, server: '', use_ssl: false, bind_dn: '', bind_password: '',
+  search_base: '', search_filter: '(uid={login})', attr_username: 'uid',
+  attr_display_name: 'cn', attr_email: 'mail',
+})
+const wecomForm = reactive({ enabled: false, corp_id: '', corp_secret: '', agent_id: '' })
+const ldapSaving = ref(false)
+const ldapTesting = ref(false)
+const wecomSaving = ref(false)
+const wecomTesting = ref(false)
+
+async function loadAuthConfig() {
+  const { data } = await api.get('/admin/auth-config')
+  Object.assign(ldapForm, data.ldap)
+  Object.assign(wecomForm, data.wecom)
+}
+
+function cleanSecret(v) {
+  return v === '******' || v === null ? undefined : v
+}
+
+async function saveLdap() {
+  ldapSaving.value = true
+  try {
+    const payload = { ...ldapForm, bind_password: cleanSecret(ldapForm.bind_password) }
+    await api.put('/admin/auth-config/ldap', payload)
+    ElMessage.success('LDAP 配置已保存')
+    await loadAuthConfig()
+  } catch { /* interceptor */ } finally {
+    ldapSaving.value = false
+  }
+}
+
+async function testLdap() {
+  ldapTesting.value = true
+  try {
+    const payload = { ...ldapForm, bind_password: cleanSecret(ldapForm.bind_password) }
+    const { data } = await api.post('/admin/auth-config/ldap/test', payload)
+    data.ok ? ElMessage.success(data.message) : ElMessage.error(data.message)
+  } catch { /* interceptor */ } finally {
+    ldapTesting.value = false
+  }
+}
+
+async function saveWecom() {
+  wecomSaving.value = true
+  try {
+    const payload = { ...wecomForm, corp_secret: cleanSecret(wecomForm.corp_secret) }
+    await api.put('/admin/auth-config/wecom', payload)
+    ElMessage.success('企业微信配置已保存')
+    auth.fetchOptions()
+    await loadAuthConfig()
+  } catch { /* interceptor */ } finally {
+    wecomSaving.value = false
+  }
+}
+
+async function testWecom() {
+  wecomTesting.value = true
+  try {
+    const payload = { ...wecomForm, corp_secret: cleanSecret(wecomForm.corp_secret) }
+    const { data } = await api.post('/admin/auth-config/wecom/test', payload)
+    data.ok ? ElMessage.success(data.message) : ElMessage.error(data.message)
+  } catch { /* interceptor */ } finally {
+    wecomTesting.value = false
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([loadStats(), loadUsers()])
+    await Promise.all([
+      wf.fetch().then(syncWfEditable),
+      loadStats(),
+      loadUsers(),
+      loadAuthConfig(),
+    ])
   } finally {
     loading.value = false
   }
@@ -287,4 +544,11 @@ onMounted(async () => {
 .dist-count { color: #909399; font-size: 13px; width: 28px; text-align: right; }
 .user-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
 .toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
+.wf-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0; border-bottom: 1px dashed #ebeef5;
+}
+.wf-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wf-used { color: #e6a23c; font-size: 12px; }
+.wf-ops { flex-shrink: 0; }
 </style>

@@ -1,19 +1,33 @@
-"""LDAP / WeCom authentication tests with mocked external services."""
+"""LDAP / WeCom authentication tests with mocked external services (DB-driven config)."""
 from unittest.mock import patch
 
-from app.core.config import settings
+from app.db import SessionLocal
+from app.services import config_service
+
+
+def _enable_wecom(enabled=True):
+    db = SessionLocal()
+    try:
+        config_service.save_wecom_config(db, {"enabled": enabled, "corp_id": "ww123",
+                                              "corp_secret": "s3cret", "agent_id": "1000002"})
+    finally:
+        db.close()
+
+
+def _enable_ldap():
+    db = SessionLocal()
+    try:
+        config_service.save_ldap_config(db, {"enabled": True})
+    finally:
+        db.close()
 
 
 def _profile_wecom():
     return {"userid": "zhangwei", "name": "张伟", "email": "zhangwei@corp.com", "avatar": ""}
 
 
-def test_wecom_login_provisions_user(client, monkeypatch):
-    monkeypatch.setattr(settings, "WECOM_ENABLED", True)
-
-    class FakeProfile:
-        def __init__(self, result):
-            self.result = result
+def test_wecom_login_provisions_user(client):
+    _enable_wecom()
 
     with patch("app.services.wecom_service.login_with_code", return_value=_profile_wecom()):
         resp = client.post("/auth/wecom", json={"code": "mock-code"})
@@ -33,16 +47,21 @@ def test_wecom_login_provisions_user(client, monkeypatch):
     me = client.get("/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})
     assert me.json()["email"] == "zhangwei@corp.com"
 
+    # login page options now reflect DB config
+    opts = client.get("/meta/auth-options").json()
+    assert opts["wecom_enabled"] is True
+
 
 def test_wecom_login_disabled(client):
+    _enable_wecom(enabled=False)
     resp = client.post("/auth/wecom", json={"code": "x"})
     assert resp.status_code == 400
 
 
-def test_ldap_login_provisions_user(client, monkeypatch):
+def test_ldap_login_provisions_user(client):
     from app.services.ldap_service import LDAPAuthResult
 
-    monkeypatch.setattr(settings, "LDAP_ENABLED", True)
+    _enable_ldap()
     ldap_result = LDAPAuthResult(username="wangfang", name="王芳", email="wangfang@corp.com",
                                  dn="uid=wangfang,ou=people,dc=example,dc=com")
 
@@ -59,11 +78,11 @@ def test_ldap_login_provisions_user(client, monkeypatch):
     assert bad.status_code == 401
 
 
-def test_login_falls_back_to_ldap(client, monkeypatch):
+def test_login_falls_back_to_ldap(client):
     """Local user with wrong password + valid LDAP creds => LDAP login succeeds."""
     from app.services.ldap_service import LDAPAuthResult
 
-    monkeypatch.setattr(settings, "LDAP_ENABLED", True)
+    _enable_ldap()
     result = LDAPAuthResult(username="newldap", name="新用户", email="", dn="uid=newldap,dc=x")
 
     with patch("app.services.ldap_service.authenticate", return_value=result):

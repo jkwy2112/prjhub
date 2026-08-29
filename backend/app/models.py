@@ -54,6 +54,29 @@ class TaskPriority(str, enum.Enum):
     urgent = "urgent"
 
 
+class WorkflowStatus(Base):
+    """Customizable task workflow: statuses + transition rules (system-wide, admin-managed)."""
+    __tablename__ = "workflow_statuses"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(32))
+    color: Mapped[str] = mapped_column(String(16), default="#409EFF")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_initial: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_done: Mapped[bool] = mapped_column(Boolean, default=False)
+    next_keys: Mapped[list] = mapped_column(JSON, default=list)  # keys of allowed next statuses
+
+
+class SystemConfig(Base):
+    """Runtime-editable system configuration (auth etc.), overlays .env settings."""
+    __tablename__ = "system_configs"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -116,7 +139,7 @@ class Task(Base):
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(Text, default="")
     type: Mapped[TaskType] = mapped_column(Enum(TaskType), default=TaskType.task)
-    status: Mapped[TaskStatus] = mapped_column(Enum(TaskStatus), default=TaskStatus.todo, index=True)
+    status: Mapped[str] = mapped_column(String(32), default="", index=True)  # WorkflowStatus.key
     priority: Mapped[TaskPriority] = mapped_column(Enum(TaskPriority), default=TaskPriority.medium)
     assignee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)

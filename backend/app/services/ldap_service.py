@@ -1,11 +1,9 @@
-"""LDAP authentication service (ldap3, search-then-bind)."""
+"""LDAP authentication service (ldap3, search-then-bind), config from DB overlaying env."""
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from ldap3 import ALL, Connection, Server, Tls
+from ldap3 import ALL, Connection, Server
 from ldap3.core.exceptions import LDAPException
-
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,48 +16,68 @@ class LDAPAuthResult:
         self.dn = dn
 
 
-def _server() -> Server:
-    use_ssl = settings.LDAP_USE_SSL
-    tls = Tls() if use_ssl else None
+def _server(cfg: Dict[str, Any]) -> Server:
     return Server(
-        settings.LDAP_SERVER,
-        port=636 if use_ssl else 389,
-        use_ssl=use_ssl,
+        cfg["server"],
+        port=636 if cfg.get("use_ssl") else 389,
+        use_ssl=bool(cfg.get("use_ssl")),
         get_info=ALL,
-        tls=tls,
         connect_timeout=5,
     )
 
 
-def authenticate(username: str, password: str) -> Optional[LDAPAuthResult]:
+def test_connection(cfg: Dict[str, Any]) -> "tuple[bool, str]":
+    """Validate admin bind + search base. Returns (ok, message)."""
+    if not cfg.get("server"):
+        return False, "未配置 LDAP 服务器地址"
+    try:
+        with Connection(_server(cfg), user=cfg.get("bind_dn") or None,
+                        password=cfg.get("bind_password") or None, auto_bind=True, receive_timeout=5):
+            pass
+        return True, "连接并绑定成功"
+    except LDAPException as exc:
+        return False, f"连接失败: {exc}"
+    except Exception as exc:  # network / dns errors
+        return False, f"连接失败: {exc}"
+
+
+def authenticate(db, username: str, password: str) -> Optional[LDAPAuthResult]:
     """Search the user with admin bind, then verify credentials by binding as the user."""
-    if not settings.LDAP_ENABLED:
+    from app.services import config_service
+
+    cfg = config_service.ldap_config(db)
+    if not cfg.get("enabled"):
         return None
-    if not password:
+    if not password or not cfg.get("server"):
         return None
 
-    search_filter = settings.LDAP_SEARCH_FILTER.format(login=_escape(username))
+    search_filter = (cfg.get("search_filter") or "(uid={login})").format(login=_escape(username))
     try:
-        with Connection(_server(), user=settings.LDAP_BIND_DN, password=settings.LDAP_BIND_PASSWORD,
-                        auto_bind=True, receive_timeout=5) as conn:
-            conn.search(settings.LDAP_SEARCH_BASE, search_filter, attributes=[
-                settings.LDAP_ATTR_USERNAME,
-                settings.LDAP_ATTR_DISPLAY_NAME,
-                settings.LDAP_ATTR_EMAIL,
+        with Connection(_server(cfg), user=cfg.get("bind_dn") or None,
+                        password=cfg.get("bind_password") or None, auto_bind=True, receive_timeout=5) as conn:
+            conn.search(cfg.get("search_base") or "", search_filter, attributes=[
+                cfg.get("attr_username") or "uid",
+                cfg.get("attr_display_name") or "cn",
+                cfg.get("attr_email") or "mail",
             ])
             if not conn.entries:
                 logger.info("LDAP search found no entry for %s", username)
                 return None
             entry = conn.entries[0]
 
-        # verify password by binding as the located DN
-        with Connection(_server(), user=entry.entry_dn, password=password, auto_bind=True):
+        with Connection(_server(cfg), user=entry.entry_dn, password=password, auto_bind=True):
             pass
 
+        def val(attr: str) -> str:
+            try:
+                return str(entry[attr].value or "")
+            except Exception:
+                return ""
+
         return LDAPAuthResult(
-            username=_norm(entry[settings.LDAP_ATTR_USERNAME].value or username),
-            name=str(entry[settings.LDAP_ATTR_DISPLAY_NAME].value or ""),
-            email=str(entry[settings.LDAP_ATTR_EMAIL].value or ""),
+            username=_norm(entry[cfg.get("attr_username") or "uid"].value or username),
+            name=val(cfg.get("attr_display_name") or "cn"),
+            email=val(cfg.get("attr_email") or "mail"),
             dn=entry.entry_dn,
         )
     except LDAPException as exc:

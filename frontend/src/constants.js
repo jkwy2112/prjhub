@@ -1,12 +1,3 @@
-export const STATUS_META = {
-  todo: { label: '待办', color: '#909399' },
-  in_progress: { label: '进行中', color: '#409EFF' },
-  testing: { label: '测试中', color: '#E6A23C' },
-  done: { label: '已完成', color: '#67C23A' },
-}
-
-export const STATUS_ORDER = ['todo', 'in_progress', 'testing', 'done']
-
 export const TYPE_META = {
   requirement: { label: '需求', color: '#409EFF', icon: 'Collection' },
   task: { label: '任务', color: '#67C23A', icon: 'Tickets' },

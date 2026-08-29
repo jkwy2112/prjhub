@@ -1,7 +1,7 @@
-"""WeCom (企业微信) OAuth2 service.
+"""WeCom (企业微信) OAuth2 service, config from DB overlaying env.
 
-Flow (扫码/网页授权, scope=snsapi_base):
-  1. Frontend redirects to WECOM_AUTHORIZE_URL with corpid + agentid + redirect_uri
+Flow (网页授权, scope=snsapi_base):
+  1. Frontend redirects to authorize URL with corpid + agentid + redirect_uri
   2. WeCom redirects back with ?code=xxx
   3. Backend exchanges code -> userid via /cgi-bin/auth/getuserinfo
   4. userid -> profile via /cgi-bin/user/get (name, email, avatar)
@@ -9,10 +9,9 @@ Flow (扫码/网页授权, scope=snsapi_base):
 import logging
 import time
 from typing import Optional
+from urllib.parse import quote_plus
 
 import httpx
-
-from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,24 +23,43 @@ GET_TOKEN_URL = "https://qyapi.weixin.qq.com/cgi-bin/gettoken"
 _token_cache: "dict[str, tuple[str, float]]" = {}
 
 
-def get_authorize_url(redirect_uri: str, state: str = "wecom") -> str:
-    from urllib.parse import quote_plus
+def _cache_key(cfg: dict) -> str:
+    return f"{cfg.get('corp_id')}:{cfg.get('corp_secret')}"
 
+
+def get_authorize_url(db, redirect_uri: str, state: str = "wecom") -> str:
+    from app.services import config_service
+
+    cfg = config_service.wecom_config(db)
     return (
-        f"{AUTHORIZE_URL}?appid={settings.WECOM_CORP_ID}"
+        f"{AUTHORIZE_URL}?appid={cfg['corp_id']}"
         f"&redirect_uri={quote_plus(redirect_uri)}"
         "&response_type=code&scope=snsapi_base"
-        f"&agentid={settings.WECOM_AGENT_ID}&state={state}#wechat_redirect"
+        f"&agentid={cfg.get('agent_id', '')}&state={state}#wechat_redirect"
     )
 
 
-def _get_access_token() -> str:
-    cached = _token_cache.get("token")
+def test_connection(cfg: dict) -> "tuple[bool, str]":
+    if not cfg.get("corp_id") or not cfg.get("corp_secret"):
+        return False, "未配置 CorpID / Secret"
+    try:
+        resp = httpx.get(GET_TOKEN_URL, params={"corpid": cfg["corp_id"], "corpsecret": cfg["corp_secret"]}, timeout=10)
+        data = resp.json()
+        if data.get("errcode") in (0, None):
+            return True, "获取 access_token 成功"
+        return False, f"企业微信返回错误: errcode={data.get('errcode')} {data.get('errmsg')}"
+    except Exception as exc:
+        return False, f"请求失败: {exc}"
+
+
+def _get_access_token(cfg: dict) -> str:
+    key = _cache_key(cfg)
+    cached = _token_cache.get(key)
     if cached and cached[1] > time.time():
         return cached[0]
     resp = httpx.get(
         GET_TOKEN_URL,
-        params={"corpid": settings.WECOM_CORP_ID, "corpsecret": settings.WECOM_CORP_SECRET},
+        params={"corpid": cfg["corp_id"], "corpsecret": cfg["corp_secret"]},
         timeout=10,
     )
     data = resp.json()
@@ -49,16 +67,19 @@ def _get_access_token() -> str:
         raise RuntimeError(f"wecom gettoken failed: {data}")
     token = data["access_token"]
     expires_in = int(data.get("expires_in", 7200))
-    _token_cache["token"] = (token, time.time() + expires_in - 300)
+    _token_cache[key] = (token, time.time() + expires_in - 300)
     return token
 
 
-def login_with_code(code: str) -> Optional[dict]:
+def login_with_code(db, code: str) -> Optional[dict]:
     """Exchange oauth code for a user profile dict; None on failure."""
-    if not settings.WECOM_ENABLED:
+    from app.services import config_service
+
+    cfg = config_service.wecom_config(db)
+    if not cfg.get("enabled"):
         return None
     try:
-        token = _get_access_token()
+        token = _get_access_token(cfg)
         resp = httpx.get(GET_USERINFO_URL, params={"access_token": token, "code": code}, timeout=10)
         data = resp.json()
         errcode = data.get("errcode", 0)

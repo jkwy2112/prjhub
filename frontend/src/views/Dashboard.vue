@@ -28,10 +28,10 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="90">
+            <el-table-column label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :color="STATUS_META[row.status].color" effect="light" size="small" style="border: none">
-                  {{ STATUS_META[row.status].label }}
+                <el-tag :color="wf.colorOf(row.status)" effect="light" size="small" style="border: none">
+                  {{ wf.labelOf(row.status) }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -64,7 +64,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
-import { STATUS_META, TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
+import { TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
+import { useWorkflowStore } from '../stores/workflow'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
@@ -74,6 +75,7 @@ import VChart from 'vue-echarts'
 use([CanvasRenderer, BarChart, GridComponent, TooltipComponent])
 
 const router = useRouter()
+const wf = useWorkflowStore()
 const loading = ref(false)
 const dash = reactive({})
 
@@ -87,14 +89,14 @@ const statCards = computed(() => [
 const statusChartOption = computed(() => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 40, right: 20, top: 20, bottom: 30 },
-  xAxis: { type: 'category', data: Object.values(STATUS_META).map((s) => s.label) },
+  xAxis: { type: 'category', data: wf.statuses.map((s) => s.name) },
   yAxis: { type: 'value', minInterval: 1 },
   series: [{
     type: 'bar',
     barWidth: 40,
-    data: Object.keys(STATUS_META).map((k) => ({
-      value: dash.status_distribution?.[k] || 0,
-      itemStyle: { color: STATUS_META[k].color, borderRadius: [4, 4, 0, 0] },
+    data: wf.statuses.map((s) => ({
+      value: dash.status_distribution?.[s.key] || 0,
+      itemStyle: { color: s.color, borderRadius: [4, 4, 0, 0] },
     })),
   }],
 }))
@@ -110,7 +112,7 @@ function openTask(row) {
 onMounted(async () => {
   loading.value = true
   try {
-    Object.assign(dash, (await api.get('/dashboard')).data)
+    await Promise.all([wf.fetch(), api.get('/dashboard').then(({ data }) => Object.assign(dash, data))])
   } finally {
     loading.value = false
   }
