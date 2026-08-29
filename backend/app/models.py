@@ -112,7 +112,11 @@ class SystemConfig(Base):
 
 
 class ProcessDefinition(Base):
-    """Versioned BPMN process definition. Latest version of a key is active."""
+    """Versioned BPMN process definition. Latest version of a key is active.
+
+    A definition is either hand-written BPMN (bpmn_xml only) or designed as a
+    nested tree in the visual designer (tree + compiled bpmn_xml + node_meta).
+    """
     __tablename__ = "process_definitions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -120,6 +124,8 @@ class ProcessDefinition(Base):
     name: Mapped[str] = mapped_column(String(128), default="")
     version: Mapped[int] = mapped_column(Integer, default=1)
     bpmn_xml: Mapped[str] = mapped_column(Text)
+    tree: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)          # designer source
+    node_meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)     # bpmn_id -> runtime meta
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

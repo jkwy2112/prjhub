@@ -78,7 +78,21 @@
         </el-form-item>
         <el-form-item label="标题" required><el-input v-model="form.title" maxlength="255" /></el-form-item>
 
-        <template v-if="form.definition_key === 'parallel_approval'">
+        <template v-if="currentDef && currentDef.has_tree">
+          <!-- visually designed flow: render runtime approver pickers from tree -->
+          <el-form-item v-for="rt in runtimeApprovers" :key="rt.id" :label="rt.name" :required="rt.required">
+            <el-select v-model="rt.users" multiple filterable remote :remote-method="searchUsers"
+              placeholder="搜索并选择审批人" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="金额">
+            <el-input-number v-model="form.amount" :min="0" :step="100" />
+            <span class="form-tip">供条件分支判断 (amount)</span>
+          </el-form-item>
+        </template>
+
+        <template v-else-if="form.definition_key === 'parallel_approval'">
           <el-form-item label="一级审批人" required>
             <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
               placeholder="搜索用户" style="width: 100%">
@@ -166,7 +180,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import api from '../api'
@@ -185,11 +199,34 @@ const createVisible = ref(false)
 const detailVisible = ref(false)
 const detail = ref(null)
 const definitions = ref([])
+const runtimeApprovers = ref([])
+
+const currentDef = computed(() => definitions.value.find((d) => d.key === form.definition_key))
 
 const form = reactive({
   definition_key: 'generic_approval', title: '', amount: 100,
   approver_l1: null, approver_l2: null, countersigners: [],
   approver_fin: null, approver_tech: null,
+})
+
+watch(() => form.definition_key, async (key) => {
+  runtimeApprovers.value = []
+  const def = definitions.value.find((d) => d.key === key)
+  if (!def?.has_tree) return
+  try {
+    const { data } = await api.get(`/approvals/definitions/${def.id}/tree`)
+    const found = []
+    const walk = (node) => {
+      if (!node) return
+      if (node.type === 'APPROVAL' && node.props?.assigneeType === 'runtime' && node.bpmnId) {
+        found.push({ tid: node.bpmnId, name: node.name, users: [] })
+      }
+      ;(node.branches || []).forEach((b) => walk(b.childNode))
+      walk(node.childNode)
+    }
+    walk(data.tree?.childNode)
+    runtimeApprovers.value = found
+  } catch { /* ignore */ }
 })
 
 const STATUS = {
@@ -251,9 +288,14 @@ function openCreate() {
 }
 
 async function submit() {
-  if (!form.title.trim() || !form.approver_l1) return ElMessage.warning('请填写标题和一级审批人')
+  if (!form.title.trim()) return ElMessage.warning('请填写标题')
   let variables
-  if (form.definition_key === 'parallel_approval') {
+  if (currentDef.value?.has_tree) {
+    const missing = runtimeApprovers.value.find((rt) => !rt.users.length)
+    if (missing) return ElMessage.warning(`请选择「${missing.name}」的审批人`)
+    variables = { amount: form.amount }
+    runtimeApprovers.value.forEach((rt) => { variables[`approver_${rt.tid}`] = rt.users })
+  } else if (form.definition_key === 'parallel_approval') {
     if (!form.approver_fin || !form.approver_tech) return ElMessage.warning('并行分支审批人不能为空')
     variables = {
       approver_l1: form.approver_l1,
@@ -261,6 +303,7 @@ async function submit() {
       approver_tech: form.approver_tech,
     }
   } else {
+    if (!form.approver_l1) return ElMessage.warning('请选择一级审批人')
     if (form.amount > 1000 && !form.countersigners.length) {
       return ElMessage.warning('大额审批需选择会签人')
     }

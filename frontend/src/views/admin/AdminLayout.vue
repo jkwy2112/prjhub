@@ -5,6 +5,7 @@
       <el-menu-item index="/admin/overview">系统概览</el-menu-item>
       <el-menu-item index="/admin/users">用户管理</el-menu-item>
       <el-menu-item index="/admin/workflows">工作流</el-menu-item>
+      <el-menu-item index="/admin/flows">审批流程</el-menu-item>
       <el-sub-menu index="integrations">
         <template #title>集成配置</template>
         <el-menu-item index="/admin/auth/ldap">LDAP 认证</el-menu-item>

@@ -22,6 +22,8 @@ const routes = [
           { path: 'users', name: 'admin-users', component: () => import('../views/admin/Users.vue') },
           { path: 'workflows', name: 'admin-workflows', component: () => import('../views/admin/WorkflowList.vue') },
           { path: 'workflows/:id', name: 'admin-workflow-designer', component: () => import('../views/admin/WorkflowDesigner.vue') },
+          { path: 'flows', name: 'admin-flows', component: () => import('../views/admin/FlowTreeList.vue') },
+          { path: 'flows/:id', name: 'admin-flow-designer', component: () => import('../views/admin/FlowTreeDesigner.vue') },
           { path: 'auth/ldap', name: 'admin-ldap', component: () => import('../views/admin/LdapConfig.vue') },
           { path: 'im/wecom', name: 'admin-wecom', component: () => import('../views/admin/ImConfig.vue') },
         ],

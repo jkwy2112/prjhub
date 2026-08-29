@@ -7,11 +7,14 @@ from app.models import AuthType
 
 
 class DefinitionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     key: str
     name: str
     version: int
     is_active: bool
+    has_tree: bool = False
     created_at: datetime
 
 
@@ -19,6 +22,12 @@ class DefinitionDeploy(BaseModel):
     key: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(default="", max_length=128)
     bpmn_xml: str = Field(min_length=1)
+
+
+class TreeDeploy(BaseModel):
+    key: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
+    name: str = Field(default="", max_length=128)
+    tree: dict
 
 
 class TicketCreate(BaseModel):

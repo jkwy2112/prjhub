@@ -17,7 +17,8 @@ PARALLEL_KEY = "parallel_approval"
 END_STATUS = {"end_approved": "approved", "end_rejected": "rejected"}
 
 
-def deploy(db: Session, key: str, name: str, bpmn_xml: str) -> ProcessDefinition:
+def deploy(db: Session, key: str, name: str, bpmn_xml: str,
+           tree: Optional[dict] = None, node_meta: Optional[dict] = None) -> ProcessDefinition:
     bpmn_engine.parse_spec(bpmn_xml)  # validate before storing
     last = (
         db.query(ProcessDefinition)
@@ -29,12 +30,30 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str) -> ProcessDefinition
     if last:
         last.is_active = False
     definition = ProcessDefinition(key=key, name=name or key, version=version,
-                                   bpmn_xml=bpmn_xml, is_active=True)
+                                   bpmn_xml=bpmn_xml, tree=tree, node_meta=node_meta, is_active=True)
     db.add(definition)
     db.commit()
     db.refresh(definition)
     logger.info("deployed process %s v%s", key, version)
     return definition
+
+
+def deploy_tree(db: Session, key: str, name: str, tree: dict) -> ProcessDefinition:
+    """Compile the designer tree and deploy (WFlow-style JSON as source of truth)."""
+    from app.services import flow_compiler
+
+    bpmn_xml, node_meta = flow_compiler.compile_tree(tree)
+    # fixed members must reference existing users (clear config-time feedback)
+    bad = sorted({
+        uid
+        for meta in node_meta.values()
+        if meta.get("assigneeType") == "users"
+        for uid in meta.get("users", [])
+        if db.get(User, uid) is None
+    })
+    if bad:
+        raise HTTPException(400, f"固定审批成员不存在: {bad}, 请重新选择")
+    return deploy(db, key, name, bpmn_xml, tree=tree, node_meta=node_meta)
 
 
 def seed_templates(db: Session) -> None:
@@ -66,17 +85,50 @@ def active_definition(db: Session, key: str) -> ProcessDefinition:
     return definition
 
 
-def _resolve_assignees(ticket_vars: dict, node_id: str) -> list:
-    """Convention: ut_cs <- variables['countersigners']; others <- variables['approver_<name>'].
+def _definition_of(db: Session, ticket: ApprovalTicket) -> ProcessDefinition:
+    return db.get(ProcessDefinition, ticket.definition_id)
 
-    'approver_<name>' matches the node id without the leading task-type prefix, e.g.
-    ut_l1 -> approver_l1 (falls back to approver_ut_l1).
-    """
-    if node_id == "ut_cs":
-        return list(ticket_vars.get("countersigners") or [])
-    short = node_id[3:] if node_id.startswith("ut_") else node_id
-    value = ticket_vars.get(f"approver_{short}", ticket_vars.get(f"approver_{node_id}"))
-    return [value] if value else []
+
+def _resolve_assignees(db: Session, ticket: ApprovalTicket, node_id: str) -> list:
+    """Priority: designed node_meta (fixed members / runtime variable) > legacy conventions.
+
+    Nonexistent users are filtered out defensively (e.g. member deleted after design)."""
+    definition = _definition_of(db, ticket)
+    meta = (definition.node_meta or {}).get(node_id) if definition else None
+    if meta:
+        if meta.get("assigneeType") == "runtime":
+            value = (ticket.variables or {}).get(f"approver_{node_id}") or []
+            users = list(value)
+        else:
+            users = list(meta.get("users") or [])
+    else:
+        variables = ticket.variables or {}
+        if node_id == "ut_cs":
+            users = list(variables.get("countersigners") or [])
+        else:
+            short = node_id[3:] if node_id.startswith("ut_") else node_id
+            value = variables.get(f"approver_{short}", variables.get(f"approver_{node_id}"))
+            users = [value] if value else []
+    if not users:
+        return []
+    rows = db.query(User.id).filter(User.id.in_(users), User.is_active.is_(True)).all()
+    valid = {r[0] for r in rows}
+    return [u for u in users if u in valid]
+
+
+def _start_variables(definition: ProcessDefinition, ticket_vars: dict) -> dict:
+    """Runtime-designed multi-instance nodes need cardinality/pass variables at start."""
+    extras: dict = {}
+    for tid, meta in (definition.node_meta or {}).items():
+        if meta.get("assigneeType") != "runtime":
+            continue
+        users = ticket_vars.get(f"approver_{tid}") or []
+        if not users:
+            raise HTTPException(400, f"流程要求指定「{meta.get('name') or tid}」的审批人(approver_{tid})")
+        extras[f"assignee_total_{tid}"] = len(users)
+        if meta.get("mode") == "count":
+            extras[f"pass_{tid}"] = min(int(meta.get("count") or 1), len(users))
+    return extras
 
 
 def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
@@ -100,7 +152,7 @@ def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
     for et in sorted(ready, key=lambda t: t.engine_task_id):
         if et.engine_task_id in by_engine_id:
             continue
-        candidates = _resolve_assignees(ticket.variables or {}, et.node_id)
+        candidates = _resolve_assignees(db, ticket, et.node_id)
         used = allocated.setdefault(et.node_id, [])
         assignee = None
         for cand in candidates:
@@ -143,8 +195,9 @@ def create_ticket(db: Session, definition_key: str, title: str, submitted_by: in
     if task_id and not db.get(Task, task_id):
         raise HTTPException(404, "关联任务不存在")
 
-    wf = bpmn_engine.start_workflow(definition.bpmn_xml)
-    bpmn_engine.inject_start_variables(wf, variables or {})
+    start_vars = dict(variables or {})
+    start_vars.update(_start_variables(definition, variables or {}))
+    wf = bpmn_engine.start_workflow(definition.bpmn_xml, variables=start_vars)
 
     ticket = ApprovalTicket(
         title=title,
@@ -185,12 +238,19 @@ def complete_task(db: Session, approval_task: ApprovalTask, user: User,
                 ApprovalTask.status == "completed")
         .count()
     )
-    total = len(_resolve_assignees(ticket.variables or {}, approval_task.node_id)) or None
+    candidates = _resolve_assignees(db, ticket, approval_task.node_id)
+    total = len(candidates) or None
 
     variables = {
         "approved": action == "approve",
         "rejected": action == "reject",
     }
+    # designed runtime nodes: inject pass_<tid> for count-mode completion expressions
+    definition = _definition_of(db, ticket)
+    meta = (definition.node_meta or {}).get(approval_task.node_id) if definition else None
+    if meta and meta.get("assigneeType") == "runtime" and meta.get("mode") == "count":
+        variables[f"pass_{approval_task.node_id}"] = min(int(meta.get("count") or 1), total or 1)
+
     bpmn_engine.complete_user_task(
         wf, approval_task.engine_task_id, variables,
         completed_count=(same_node_completed + 1) if total else None,

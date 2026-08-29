@@ -34,8 +34,17 @@ def parse_spec(bpmn_xml: str, process_id: Optional[str] = None):
         raise EngineError(f"BPMN 流程校验失败: {exc}") from exc
 
 
-def start_workflow(bpmn_xml: str, process_id: Optional[str] = None) -> BpmnWorkflow:
+def start_workflow(bpmn_xml: str, process_id: Optional[str] = None,
+                   variables: Optional[dict] = None) -> BpmnWorkflow:
+    """Create a workflow; variables are injected into the Start task's data BEFORE
+    engine steps run, so gateways/multi-instance cardinality evaluated along the
+    chain can see them."""
     wf = BpmnWorkflow(parse_spec(bpmn_xml, process_id))
+    if variables:
+        for t in wf.get_tasks(state=TaskState.READY):
+            if not getattr(t.task_spec, "manual", False):
+                t.data.update(variables)
+                break
     wf.do_engine_steps()
     return wf
 

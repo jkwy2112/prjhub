@@ -48,15 +48,27 @@ def rebuild_tasks_status_column(engine: Engine) -> None:
 
 
 def ensure_project_workflow_column(engine: Engine) -> None:
-    """Add projects.workflow_id column if missing."""
-    if not engine.url.get_backend_name() == "sqlite":
-        return
-    with engine.connect() as conn:
-        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(projects)")).fetchall()]
-    if cols and "workflow_id" not in cols:
+    """Add late-introduced columns if missing: projects.workflow_id,
+    process_definitions.tree / node_meta (SQLite and PostgreSQL)."""
+    if engine.url.get_backend_name() == "sqlite":
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(projects)")).fetchall()]
+        if cols and "workflow_id" not in cols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
+            logger.info("added projects.workflow_id column")
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
+        for col in ("tree", "node_meta"):
+            if cols and col not in cols:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE process_definitions ADD COLUMN {col} JSON"))
+                logger.info("added process_definitions.%s column", col)
+    elif engine.url.get_backend_name() == "postgresql":
         with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
-        logger.info("added projects.workflow_id column")
+            conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS workflow_id INTEGER"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS tree JSONB"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS node_meta JSONB"))
 
 
 def run_startup_migrations(engine: Engine) -> None:

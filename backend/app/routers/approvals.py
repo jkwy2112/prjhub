@@ -15,6 +15,7 @@ from app.schemas_approval import (
     TicketCreate,
     TicketDetail,
     TicketOut,
+    TreeDeploy,
 )
 from app.services import approval_service
 
@@ -23,18 +24,43 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 @router.get("/definitions", response_model=List[DefinitionOut], summary="流程定义(激活版本)")
 def list_definitions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
-    return (
+    out = []
+    for d in (
         db.query(ProcessDefinition)
         .filter(ProcessDefinition.is_active.is_(True))
         .order_by(ProcessDefinition.id)
         .all()
-    )
+    ):
+        item = DefinitionOut.model_validate(d)
+        item.has_tree = bool(d.tree)
+        out.append(item)
+    return out
 
 
 @router.post("/definitions", response_model=DefinitionOut, status_code=201, summary="部署 BPMN(超管)")
 def deploy_definition(body: DefinitionDeploy, db: Session = Depends(get_db),
                       user: User = Depends(get_admin_user)):
     return approval_service.deploy(db, body.key, body.name, body.bpmn_xml)
+
+
+@router.post("/definitions/tree", response_model=DefinitionOut, status_code=201,
+             summary="保存可视化设计的流程树(超管, 自动编译为 BPMN)")
+def deploy_tree(body: TreeDeploy, db: Session = Depends(get_db), user: User = Depends(get_admin_user)):
+    from app.services.flow_compiler import FlowCompileError
+
+    try:
+        return approval_service.deploy_tree(db, body.key, body.name, body.tree)
+    except FlowCompileError as exc:
+        raise HTTPException(400, str(exc))
+
+
+@router.get("/definitions/{definition_id}/tree", summary="读取流程树(设计器回显/发起表单解析)")
+def get_tree(definition_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    definition = db.get(ProcessDefinition, definition_id)
+    if not definition:
+        raise HTTPException(404, "流程定义不存在")
+    return {"id": definition.id, "key": definition.key, "name": definition.name,
+            "version": definition.version, "tree": definition.tree}
 
 
 @router.post("", response_model=TicketDetail, status_code=201, summary="发起审批")
