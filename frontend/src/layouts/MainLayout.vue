@@ -10,6 +10,7 @@
         <el-menu-item index="/dashboard"><el-icon><Odometer /></el-icon>仪表盘</el-menu-item>
         <el-menu-item index="/projects"><el-icon><Folder /></el-icon>项目</el-menu-item>
         <el-menu-item index="/my-tasks"><el-icon><List /></el-icon>我的任务</el-menu-item>
+        <el-menu-item v-if="auth.user?.is_superuser" index="/admin"><el-icon><Setting /></el-icon>管理</el-menu-item>
       </el-menu>
       <div class="sidebar-footer">v0.1.0</div>
     </el-aside>
@@ -38,14 +39,14 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Odometer, Folder, List, ArrowDown } from '@element-plus/icons-vue'
+import { Odometer, Folder, List, ArrowDown, Setting } from '@element-plus/icons-vue'
 import { useAuthStore } from '../stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
-const pageTitle = computed(() => ({ '/dashboard': '仪表盘', '/projects': '项目', '/my-tasks': '我的任务' }[route.path] || 'PrjHub'))
+const pageTitle = computed(() => ({ '/dashboard': '仪表盘', '/projects': '项目', '/my-tasks': '我的任务', '/admin': '系统管理' }[route.path] || 'PrjHub'))
 const avatarText = computed(() => auth.displayName.slice(0, 1).toUpperCase())
 
 function onCommand(cmd) {

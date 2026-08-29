@@ -11,6 +11,8 @@ const routes = [
       { path: 'projects', name: 'projects', component: () => import('../views/Projects.vue') },
       { path: 'projects/:id', name: 'project-detail', component: () => import('../views/ProjectDetail.vue') },
       { path: 'my-tasks', name: 'my-tasks', component: () => import('../views/MyTasks.vue') },
+      { path: 'admin', name: 'admin', component: () => import('../views/Admin.vue'),
+        meta: { requiresSuperuser: true } },
     ],
   },
 ]
@@ -21,6 +23,10 @@ router.beforeEach((to) => {
   const token = localStorage.getItem('token')
   if (!to.meta.public && !token) return { name: 'login', query: { redirect: to.fullPath } }
   if (to.name === 'login' && token) return { name: 'dashboard' }
+  if (to.meta.requiresSuperuser) {
+    const user = JSON.parse(localStorage.getItem('user') || 'null')
+    if (!user?.is_superuser) return { name: 'dashboard' }
+  }
   return true
 })
 

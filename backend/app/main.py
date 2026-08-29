@@ -8,7 +8,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
 from app.models import AuthType, Project, ProjectMember, ProjectRole, Task, TaskPriority, TaskStatus, TaskType, User
-from app.routers import auth, dashboard, projects, tasks, users
+from app.routers import admin, auth, dashboard, projects, tasks, users
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("prjhub")
@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(users.router)
+    app.include_router(admin.router)
     app.include_router(projects.router)
     app.include_router(tasks.router)
     app.include_router(dashboard.router)
