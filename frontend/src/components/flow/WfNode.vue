@@ -1,7 +1,7 @@
 <template>
   <div class="wf-seg">
     <!-- node card -->
-    <div class="wf-card" :class="[`wf-${node.type.toLowerCase()}`, { selected: selected === node }]"
+    <div class="wf-card" :class="[`wf-${node.type.toLowerCase()}`, { selected: selected === node, error: hasError }]"
       :style="{ '--card-color': color }" @click="$emit('select', node)">
       <span class="wf-del" v-if="node.type !== 'ROOT'" @click.stop="removeSelf"><el-icon><Close /></el-icon></span>
       <div class="wf-card-head">
@@ -13,6 +13,7 @@
           票签{{ node.props?.count }}
         </span>
         <span v-if="node.type === 'APPROVAL' && node.props?.assigneeType === 'runtime'" class="wf-badge rt">发起时指定</span>
+        <span v-if="node.type === 'APPROVAL' && node.props?.refuse === 'TO_BEFORE'" class="wf-badge cs">驳回退回上节点</span>
       </div>
       <div class="wf-card-body">{{ summary }}</div>
     </div>
@@ -27,6 +28,9 @@
         <div class="wf-menu">
           <div class="wf-menu-item" @click="insert('APPROVAL')">
             <el-icon style="color: #ff943e"><User /></el-icon>审批人
+          </div>
+          <div class="wf-menu-item" @click="insert('CC')">
+            <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
           </div>
           <div class="wf-menu-item" @click="insert('CONDITIONS')">
             <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
@@ -47,7 +51,7 @@
         <div v-for="(branch, i) in node.branches" :key="i" class="wf-branch-col">
           <span v-if="i === 0" class="cover tl" /><span v-if="i === 0" class="cover bl" />
           <span v-if="i === node.branches.length - 1" class="cover tr" /><span v-if="i === node.branches.length - 1" class="cover br" />
-          <div class="wf-branch-col-head" @click="$emit('select', branch)">
+          <div class="wf-branch-col-head" :class="{ 'head-error': errorNodes?.has?.(branch) }" @click="$emit('select', branch)">
             <span class="wf-branch-col-move" v-if="node.type === 'CONDITIONS' && i > 0"
               @click.stop="moveBranch(i, -1)"><el-icon><ArrowLeft /></el-icon></span>
             <span class="wf-branch-col-title">{{ branch.name || `条件${i + 1}` }}</span>
@@ -58,6 +62,7 @@
           </div>
           <div class="wf-branch-chain">
             <WfNode v-if="branch.childNode" :node="branch.childNode" :selected="selected"
+              :error-nodes="errorNodes"
               @select="$emit('select', $event)" @self-remove="branch.childNode = null"
               @changed="$emit('changed')" />
             <div v-else class="wf-branch-empty" @click="$emit('select', branch)">点击设置分支内容</div>
@@ -68,6 +73,7 @@
 
     <!-- child chain -->
     <WfNode v-if="node.childNode" :node="node.childNode" :selected="selected"
+      :error-nodes="errorNodes"
       @select="$emit('select', $event)" @self-remove="removeSelf" @changed="$emit('changed')" />
   </div>
 </template>
@@ -81,22 +87,28 @@ defineOptions({ name: 'WfNode' })
 const props = defineProps({
   node: { type: Object, required: true },
   selected: { type: Object, default: null },
+  errorNodes: { type: Object, default: null },
 })
+const hasError = computed(() => !!props.errorNodes?.has?.(props.node))
 const emit = defineEmits(['select', 'self-remove', 'changed'])
 
 const iconMap = {
-  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation,
+  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation, CC: Promotion,
 }
 const icon = computed(() => iconMap[props.node.type] || Stamp)
-const defaultName = computed(() => ({ ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支' }[props.node.type] || ''))
+const defaultName = computed(() => ({ ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支', CC: '抄送人' }[props.node.type] || ''))
 const color = computed(() => ({
-  ROOT: '#409EFF', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff',
+  ROOT: '#409EFF', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff', CC: '#3296fa',
 }[props.node.type] || '#909399'))
 const multiUsers = computed(() => (props.node.props?.users?.length || 0) > 1 || props.node.props?.assigneeType === 'runtime')
 
 const summary = computed(() => {
   const n = props.node
   if (n.type === 'ROOT') return '所有人可发起'
+  if (n.type === 'CC') {
+    if (n.props?.assigneeType === 'runtime') return '发起时指定'
+    return `${(n.props?.users || []).length || '未指定'} 人接收通知`
+  }
   if (n.type === 'APPROVAL') {
     if (n.props?.assigneeType === 'runtime') return `发起时指定 · ${modeLabel(n.props?.mode)}`
     const names = (n.props?.users || []).length
@@ -124,6 +136,9 @@ function insert(type) {
 }
 
 function newNode(type) {
+  if (type === 'CC') {
+    return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
+  }
   if (type === 'APPROVAL') {
     return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2 }, childNode: null }
   }
@@ -192,6 +207,13 @@ function removeSelf() {
 }
 .wf-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.13); transform: translateY(-1px); }
 .wf-card.selected { outline: 2px solid var(--card-color); outline-offset: 1px; }
+.wf-card.error { border-color: #f56c6c; box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.25); }
+.wf-card.error::after {
+  content: '!'; position: absolute; right: -10px; top: -10px; width: 20px; height: 20px;
+  border-radius: 50%; background: #f56c6c; color: #fff; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.wf-branch-col-head.head-error { border-color: #f56c6c; color: #f56c6c; background: #fef0f0; }
 .wf-card-head { display: flex; align-items: center; gap: 6px; padding: 8px 12px 2px; color: var(--card-color); }
 .wf-title { font-size: 14px; font-weight: 600; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wf-badge { font-size: 11px; padding: 0 7px; border-radius: 9px; border: 1px solid #e1f3d8; background: #f0f9eb; color: #67c23a; }

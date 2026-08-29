@@ -149,6 +149,66 @@ def _start_variables(definition: ProcessDefinition, ticket_vars: dict) -> dict:
     return extras
 
 
+def _advance_automatic(db: Session, ticket: ApprovalTicket, wf, definition) -> None:
+    """Auto-drive non-blocking nodes before mirroring pending tasks:
+
+    - CC nodes: create notification records (one per recipient) and complete instantly
+    - APPROVAL nodes whose fixed assignees are all gone: apply `nobody` policy
+      (auto_pass / auto_reject / to_admin = leave pending for superusers)
+    """
+    from app.models import utcnow
+
+    meta_all = definition.node_meta or {}
+    for _ in range(50):  # safety bound
+        ready = bpmn_engine.ready_user_tasks(wf)
+        acted = False
+        for et in ready:
+            meta = meta_all.get(et.node_id)
+            if not meta:
+                continue
+            if meta.get("type") == "CC":
+                recipients = _resolve_assignees(db, ticket, et.node_id)
+                for uid in recipients:
+                    db.add(ApprovalTask(
+                        ticket_id=ticket.id, engine_task_id=et.engine_task_id,
+                        node_id=et.node_id, node_name=et.node_name,
+                        assignee_id=uid, status="completed", action="cc",
+                        comment="抄送", finished_at=utcnow(),
+                    ))
+                if not recipients and meta.get("assigneeType") == "runtime":
+                    recipients = (ticket.variables or {}).get(f"cc_{et.node_id}") or []
+                    for uid in recipients:
+                        db.add(ApprovalTask(
+                            ticket_id=ticket.id, engine_task_id=et.engine_task_id,
+                            node_id=et.node_id, node_name=et.node_name,
+                            assignee_id=uid, status="completed", action="cc",
+                            comment="抄送", finished_at=utcnow(),
+                        ))
+                bpmn_engine.complete_user_task(wf, et.engine_task_id, {"cc_done": True})
+                acted = True
+                break
+            if meta.get("type") == "APPROVAL" and meta.get("assigneeType") == "users":
+                if not _resolve_assignees(db, ticket, et.node_id):
+                    policy = meta.get("nobody", "to_admin")
+                    if policy == "to_admin":
+                        continue  # leave as pending; superusers can act
+                    action = "approve" if policy == "auto_pass" else "reject"
+                    db.add(ApprovalTask(
+                        ticket_id=ticket.id, engine_task_id=et.engine_task_id,
+                        node_id=et.node_id, node_name=et.node_name,
+                        assignee_id=None, status="completed", action=action,
+                        comment="审批人为空, 自动处理", finished_at=utcnow(),
+                    ))
+                    wf2 = wf
+                    bpmn_engine.complete_user_task(
+                        wf2, et.engine_task_id,
+                        {"approved": action == "approve", "rejected": action == "reject"})
+                    acted = True
+                    break
+        if not acted:
+            return
+
+
 def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
     """Mirror engine READY user tasks into ApprovalTask rows; cancel rows no longer ready."""
     ready = bpmn_engine.ready_user_tasks(wf)
@@ -161,10 +221,11 @@ def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
         if row.status == "pending" and row.engine_task_id not in ready_ids:
             row.status = "cancelled"  # e.g. terminated by or-sign completion / rejection shortcut
 
-    # assignee allocation per node, stable by (node_id, engine_task_id)
+    # assignee allocation per node (only currently-pending rows block re-allocation,
+    # so a TO_BEFORE bounce can hand the same person their re-approval todo)
     allocated: "dict[str, list[int]]" = {}
     for row in sorted(rows, key=lambda r: r.engine_task_id):
-        if row.assignee_id is not None:
+        if row.assignee_id is not None and row.status == "pending":
             allocated.setdefault(row.node_id, []).append(row.assignee_id)
 
     for et in sorted(ready, key=lambda t: t.engine_task_id):
@@ -190,6 +251,7 @@ def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
 
 
 def _persist(db: Session, ticket: ApprovalTicket, wf) -> None:
+    _advance_automatic(db, ticket, wf, _definition_of(db, ticket))
     ticket.engine_state = bpmn_engine.save_state(wf)
     end_id = bpmn_engine.reached_end(wf)
     if end_id is not None:
@@ -238,10 +300,12 @@ def create_ticket(db: Session, definition_key: str, title: str, submitted_by: in
         submitted_by=submitted_by,
         variables=variables or {},
         status="running",
+        engine_state=b"",  # placeholder; replaced after auto-advance below
     )
-    ticket.engine_state = bpmn_engine.save_state(wf)
     db.add(ticket)
     db.flush()
+    _advance_automatic(db, ticket, wf, definition)
+    ticket.engine_state = bpmn_engine.save_state(wf)
     _sync_tasks(db, ticket, wf)
     db.commit()
     db.refresh(ticket)

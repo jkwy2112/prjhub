@@ -100,6 +100,7 @@ class _Graph:
         self.edges: "list[dict]" = []
         self._seq = 0
         self._ap = 0
+        self._cc = 0
         self._gw = 0
 
     def element(self, eid, tag, **attrs):
@@ -115,6 +116,10 @@ class _Graph:
     def ap_id(self):
         self._ap += 1
         return f"ut_ap{self._ap}"
+
+    def cc_id(self):
+        self._cc += 1
+        return f"ut_cc{self._cc}"
 
     def gw_id(self, prefix):
         self._gw += 1
@@ -132,7 +137,7 @@ def compile_tree(tree: dict, process_id: str = "Designed_Approval") -> "tuple[st
     g.element(END_APPROVED, "bpmn:endEvent", name="审批通过")
     g.element(END_REJECTED, "bpmn:endEvent", name="审批驳回", terminate=True)
 
-    entry, exit_ = _compile_chain(g, tree["childNode"], meta, depth=0)
+    entry, exit_, _ = _compile_chain(g, tree["childNode"], meta, depth=0)
     g.edge("start", entry)
     g.edge(exit_, END_APPROVED)
 
@@ -140,29 +145,34 @@ def compile_tree(tree: dict, process_id: str = "Designed_Approval") -> "tuple[st
     return xml, meta
 
 
-def _compile_chain(g: _Graph, node: Optional[dict], meta: dict, depth: int):
-    """Returns (entry_id, exit_id) of a node chain; (None, None) when empty."""
+def _compile_chain(g: _Graph, node: Optional[dict], meta: dict, depth: int,
+                   prev_approval: Optional[str] = None):
+    """Returns (entry_id, exit_id, last_approval_id); last follows depth-first order."""
     if depth > 20:
         raise FlowCompileError("流程嵌套层级过深 (最多 20 层)")
     if not node:
-        return None, None
+        return None, None, prev_approval
 
-    e1, x1 = _compile_single(g, node, meta, depth)
-    e2, x2 = _compile_chain(g, node.get("childNode"), meta, depth + 1)
+    e1, x1, own = _compile_single(g, node, meta, depth, prev_approval)
+    child = node.get("childNode")
+    e2, x2, last = _compile_chain(g, child, meta, depth + 1, own)
     if e2 is not None:
         g.edge(x1, e2)
-        return e1, x2
-    return e1, x1
+        return e1, x2, last
+    return e1, x1, own
 
 
-def _compile_single(g: _Graph, node: dict, meta: dict, depth: int):
+def _compile_single(g: _Graph, node: dict, meta: dict, depth: int,
+                    prev_approval: Optional[str]):
     ntype = node.get("type")
     if ntype == "APPROVAL":
-        return _compile_approval(g, node, meta)
+        return _compile_approval(g, node, meta, prev_approval)
+    if ntype == "CC":
+        return _compile_cc(g, node, meta, prev_approval)
     if ntype == "CONDITIONS":
-        return _compile_group(g, node, meta, depth, parallel=False)
+        return _compile_group(g, node, meta, depth, parallel=False, prev_approval=prev_approval)
     if ntype == "CONCURRENTS":
-        return _compile_group(g, node, meta, depth, parallel=True)
+        return _compile_group(g, node, meta, depth, parallel=True, prev_approval=prev_approval)
     raise FlowCompileError(f"不支持的节点类型 {ntype}")
 
 
@@ -175,6 +185,7 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
     users = props.get("users") or []
     mode = props.get("mode", "any")
     count = int(props.get("count") or 0)
+    nobody = props.get("nobody", "to_admin")
 
     if assignee_type not in ("users", "runtime"):
         raise FlowCompileError(f"审批节点「{name}」审批人类型不合法")
@@ -184,6 +195,8 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
         raise FlowCompileError(f"审批节点「{name}」签核模式不合法")
     if mode == "count" and count < 1:
         raise FlowCompileError(f"审批节点「{name}」票签数需 ≥ 1")
+    if nobody not in ("to_admin", "auto_pass", "auto_reject"):
+        raise FlowCompileError(f"审批节点「{name}」审批人为空策略不合法")
 
     multi = len(users) > 1 or assignee_type == "runtime"
     if multi:
@@ -205,22 +218,55 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
         g.element(tid, "bpmn:userTask", name=name)
 
     meta[tid] = {"type": "APPROVAL", "name": name, "assigneeType": assignee_type,
-                 "users": users, "mode": mode, "count": count}
+                 "users": users, "mode": mode, "count": count, "nobody": nobody}
     node["bpmnId"] = tid  # write back so the launch form can build approver_<tid> variables
     return tid
 
 
-def _compile_approval(g: _Graph, node: dict, meta: dict):
-    """approval -> reject gateway. Entry = task, exit = gateway (continue edge is unconditional)."""
+def _compile_approval(g: _Graph, node: dict, meta: dict, prev_approval: Optional[str]):
+    """approval -> reject gateway. Entry = task, exit = gateway (continue edge is unconditional).
+
+    refuse rule: TO_END -> terminate end (default); TO_BEFORE -> edge back to the previous
+    approval task (depth-first order) for re-approval; falls back to END when none exists.
+    """
     tid = _approval_meta(g, node, meta)
     gw = g.gw_id("gw_rej")
     g.element(gw, "bpmn:exclusiveGateway", gatewayDirection="Diverging")
     g.edge(tid, gw)
-    g.edge(gw, END_REJECTED, condition="rejected", name="驳回")
-    return tid, gw
+    refuse = (node.get("props") or {}).get("refuse", "TO_END")
+    if refuse not in ("TO_END", "TO_BEFORE"):
+        raise FlowCompileError(f"审批节点「{meta[tid]['name']}」驳回规则不合法")
+    if refuse == "TO_BEFORE" and prev_approval:
+        g.edge(gw, prev_approval, condition="rejected", name="驳回到上一节点")
+        meta[tid]["refuse"] = "TO_BEFORE"
+        meta[tid]["returnTo"] = prev_approval
+    else:
+        g.edge(gw, END_REJECTED, condition="rejected", name="驳回")
+    return tid, gw, tid
 
 
-def _compile_group(g: _Graph, node: dict, meta: dict, depth: int, parallel: bool):
+def _compile_cc(g: _Graph, node: dict, meta: dict, prev_approval: Optional[str]):
+    """CC node -> user task auto-completed by the service layer (never blocks the flow).
+
+    Returns the incoming prev_approval unchanged so TO_BEFORE chains pass through CC.
+    """
+    tid = g.cc_id()
+    props = node.get("props") or {}
+    name = str(node.get("name") or "抄送人").strip() or "抄送人"
+    assignee_type = props.get("assigneeType", "users")
+    users = props.get("users") or []
+    if assignee_type not in ("users", "runtime"):
+        raise FlowCompileError(f"抄送节点「{name}」抄送人类型不合法")
+    if assignee_type == "users" and not users:
+        raise FlowCompileError(f"抄送节点「{name}」未指定抄送成员")
+    g.element(tid, "bpmn:userTask", name=name)
+    meta[tid] = {"type": "CC", "name": name, "assigneeType": assignee_type, "users": users}
+    node["bpmnId"] = tid
+    return tid, tid, prev_approval
+
+
+def _compile_group(g: _Graph, node: dict, meta: dict, depth: int, parallel: bool,
+                   prev_approval: Optional[str]):
     tag = "bpmn:parallelGateway" if parallel else "bpmn:exclusiveGateway"
     label = "并行分支" if parallel else "条件分支"
     branches = node.get("branches") or []
@@ -234,8 +280,9 @@ def _compile_group(g: _Graph, node: dict, meta: dict, depth: int, parallel: bool
 
     expressions = [_branch_expression(b.get("props")) for b in branches] if not parallel else [None] * len(branches)
 
+    last_in_branches = prev_approval
     for i, branch in enumerate(branches):
-        chain = _compile_chain(g, branch.get("childNode"), meta, depth + 1)
+        chain = _compile_chain(g, branch.get("childNode"), meta, depth + 1, prev_approval)
         bname = str(branch.get("name") or f"分支{i + 1}")
         if chain[0] is None:
             g.edge(fork, join, name=bname)
@@ -245,8 +292,11 @@ def _compile_group(g: _Graph, node: dict, meta: dict, depth: int, parallel: bool
         else:
             g.edge(fork, chain[0], name=bname)
         g.edge(chain[1], join)
+        last_in_branches = chain[2] or last_in_branches
 
-    return fork, join
+    # NOTE: the group's childNode (post-merge chain) is connected by _compile_chain,
+    # which receives last_in_branches as `own` so nested approvals chain correctly.
+    return fork, join, last_in_branches
 
 
 def _serialize(g: _Graph, process_id: str) -> str:

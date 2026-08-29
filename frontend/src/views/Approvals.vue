@@ -105,6 +105,13 @@
             <el-input-number v-model="form.amount" :min="0" :step="100" />
             <span class="form-tip">供条件分支判断 (amount)</span>
           </el-form-item>
+          <!-- runtime CC pickers from tree -->
+          <el-form-item v-for="rc in runtimeCcs" :key="rc.tid" :label="rc.name + ' (抄送)'">
+            <el-select v-model="rc.users" multiple filterable remote :remote-method="searchUsers"
+              placeholder="搜索并选择抄送人(可选)" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+          </el-form-item>
           <!-- runtime approvers from tree -->
           <el-form-item v-for="rt in runtimeApprovers" :key="rt.tid" :label="rt.name" required>
             <el-select v-model="rt.users" multiple filterable remote :remote-method="searchUsers"
@@ -222,6 +229,7 @@ const detailVisible = ref(false)
 const detail = ref(null)
 const definitions = ref([])
 const runtimeApprovers = ref([])
+const runtimeCcs = ref([])
 const formFields = ref([])
 const formValues = reactive({})
 
@@ -235,6 +243,7 @@ const form = reactive({
 
 watch(() => form.definition_key, async (key) => {
   runtimeApprovers.value = []
+  runtimeCcs.value = []
   formFields.value = []
   Object.keys(formValues).forEach((k) => delete formValues[k])
   const def = definitions.value.find((d) => d.key === key)
@@ -256,6 +265,17 @@ watch(() => form.definition_key, async (key) => {
     }
     walk(data.tree?.childNode)
     runtimeApprovers.value = found
+    const ccs = []
+    const walkCc = (node) => {
+      if (!node) return
+      if (node.type === 'CC' && node.props?.assigneeType === 'runtime' && node.bpmnId) {
+        ccs.push({ tid: node.bpmnId, name: node.name, users: [] })
+      }
+      ;(node.branches || []).forEach((b) => walkCc(b.childNode))
+      walkCc(node.childNode)
+    }
+    walkCc(data.tree?.childNode)
+    runtimeCcs.value = ccs
   } catch { /* ignore */ }
 })
 
@@ -328,6 +348,7 @@ async function submit() {
     if (missing) return ElMessage.warning(`请选择「${missing.name}」的审批人`)
     variables = { ...formValues }
     runtimeApprovers.value.forEach((rt) => { variables[`approver_${rt.tid}`] = rt.users })
+    runtimeCcs.value.forEach((rc) => { if (rc.users.length) variables[`cc_${rc.tid}`] = rc.users })
   } else if (form.definition_key === 'parallel_approval') {
     if (!form.approver_fin || !form.approver_tech) return ElMessage.warning('并行分支审批人不能为空')
     variables = {

@@ -24,11 +24,16 @@
         <FormDesigner :items="formItems" />
       </div>
       <div v-else class="wf-canvas">
+        <div v-if="errors.length" class="wf-errors">
+          <div v-for="(e, i) in errors" :key="i" class="wf-error-item" @click="locateError(e)">
+            <el-icon><Warning /></el-icon>{{ e.message }}
+          </div>
+        </div>
         <div class="wf-root-row">
           <div class="wf-start-pill">发起人 · 所有人</div>
           <div class="wf-link"></div>
         </div>
-        <WfNode :node="tree" :selected="selected" @select="selected = $event" @self-remove="tree.childNode = null" />
+        <WfNode :node="tree" :selected="selected" :error-nodes="errorNodes" @select="selected = $event" @self-remove="tree.childNode = null" />
         <template v-if="!tree.childNode">
           <div class="wf-plus-row">
             <el-popover placement="bottom-start" trigger="click" width="290">
@@ -38,6 +43,9 @@
               <div class="wf-menu">
                 <div class="wf-menu-item" @click="addFirst('APPROVAL')">
                   <el-icon style="color: #ff943e"><User /></el-icon>审批人
+                </div>
+                <div class="wf-menu-item" @click="addFirst('CC')">
+                  <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
                 </div>
                 <div class="wf-menu-item" @click="addFirst('CONDITIONS')">
                   <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
@@ -91,6 +99,41 @@
               <el-form-item v-if="selected.props.mode === 'count'" label="通过票数">
                 <el-input-number v-model="selected.props.count" :min="1" />
               </el-form-item>
+              <el-form-item label="审批人为空">
+                <el-select v-model="selected.props.nobody" style="width: 100%">
+                  <el-option value="to_admin" label="转交系统管理员" />
+                  <el-option value="auto_pass" label="自动通过" />
+                  <el-option value="auto_reject" label="自动驳回" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="驳回规则">
+                <el-select v-model="selected.props.refuse" style="width: 100%">
+                  <el-option value="TO_END" label="驳回即结束流程" />
+                  <el-option value="TO_BEFORE" label="退回上一审批节点重审" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </template>
+
+          <!-- CC -->
+          <template v-else-if="selected.type === 'CC'">
+            <el-form label-width="90px" size="small">
+              <el-form-item label="节点名称">
+                <el-input v-model="selected.name" maxlength="32" />
+              </el-form-item>
+              <el-form-item label="抄送人">
+                <el-radio-group v-model="selected.props.assigneeType">
+                  <el-radio-button value="users">固定成员</el-radio-button>
+                  <el-radio-button value="runtime">发起时指定</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
+                <el-select v-model="selected.props.users" multiple filterable remote
+                  :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
+                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+                </el-select>
+              </el-form-item>
+              <p class="tip">抄送节点不阻塞流程: 到达时自动通过并向抄送人生成通知记录</p>
             </el-form>
           </template>
 
@@ -178,10 +221,10 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Plus, Check, Close, User, Share, Operation } from '@element-plus/icons-vue'
+import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning } from '@element-plus/icons-vue'
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
 import FormDesigner from '../../components/form/FormDesigner.vue'
@@ -200,7 +243,7 @@ const userOptions = ref([])
 
 const typeLabel = computed(() => ({
   APPROVAL: '审批节点', CONDITION: '条件分支', BRANCH: '并行分支',
-  CONDITIONS: '条件分支组', CONCURRENTS: '并行分支组', ROOT: '发起人',
+  CONDITIONS: '条件分支组', CONCURRENTS: '并行分支组', ROOT: '发起人', CC: '抄送人',
 }[selected.value?.type] || ''))
 
 const groupsWithCond = computed(() => selected.value?.props?.groups || [])
@@ -237,9 +280,22 @@ async function searchUsers(q) {
   userOptions.value = data
 }
 
+const errorNodes = computed(() => new Set(errors.value.filter((e) => e.node).map((e) => e.node)))
+
+function locateError(e) {
+  if (!e.node) return
+  selected.value = e.node
+  nextTick(() => {
+    document.querySelector('.wf-card.selected')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 function newNode(type) {
+  if (type === 'CC') {
+    return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
+  }
   if (type === 'APPROVAL') {
-    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2 }, childNode: null }
+    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2, nobody: 'to_admin', refuse: 'TO_END' }, childNode: null }
   }
   if (type === 'CONDITIONS') {
     return {
@@ -284,26 +340,38 @@ async function loadUsersByIds(ids) {
 
 function collectUserIds(node, acc) {
   if (!node) return acc
-  if (node.type === 'APPROVAL') acc.push(...(node.props?.users || []))
+  if (node.type === 'APPROVAL' || node.type === 'CC') acc.push(...(node.props?.users || []))
   ;(node.branches || []).forEach((b) => collectUserIds(b.childNode, acc))
   collectUserIds(node.childNode, acc)
   return acc
 }
 
+const errors = computed(() => {
+  const errs = []
+  if (tree.childNode) collectErrors(tree.childNode, errs)
+  const ids = formItems.value.map((f) => f.id)
+  const dup = ids.find((id, i) => ids.indexOf(id) !== i)
+  if (dup) errs.push({ node: null, message: `表单字段ID重复: ${dup}` })
+  return errs
+})
+
 function collectErrors(node, errs) {
   if (!node) return
   if (node.type === 'APPROVAL') {
     if (node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
-      errs.push(`「${node.name}」未指定审批成员`)
+      errs.push({ node, message: `「${node.name}」未指定审批成员` })
     }
+  }
+  if (node.type === 'CC' && node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
+    errs.push({ node, message: `「${node.name}」未指定抄送成员` })
   }
   ;(node.branches || []).forEach((b) => {
     if (b.type === 'CONDITION') {
       const hasCond = (b.props?.groups || []).some((g) => (g.conditions || []).length)
       const validConds = (b.props?.groups || []).every((g) =>
         (g.conditions || []).every((c) => c.field && c.value?.length && c.value[0] !== ''))
-      if (!hasCond) errs.push(`条件分支「${b.name}」未设置条件 (无条件=默认分支)`)
-      else if (!validConds) errs.push(`条件分支「${b.name}」存在未填写完整的条件`)
+      if (!hasCond) errs.push({ node: b, message: `条件分支「${b.name}」未设置条件 (无条件=默认分支)` })
+      else if (!validConds) errs.push({ node: b, message: `条件分支「${b.name}」存在未填写完整的条件` })
     }
     collectErrors(b.childNode, errs)
   })
@@ -315,10 +383,10 @@ async function save() {
     return ElMessage.warning('请填写流程标识和名称')
   }
   if (!tree.childNode) return ElMessage.warning('流程至少需要一个节点')
-  const errs = []
-  collectErrors(tree.childNode, errs)
-  if (errs.length) {
-    ElMessage.warning({ message: errs.slice(0, 3).join('; ') + (errs.length > 3 ? ' …' : ''), duration: 5000 })
+  if (errors.value.length) {
+    ElMessage.warning({ message: errors.value.slice(0, 3).map((e) => e.message).join('; ')
+      + (errors.value.length > 3 ? ' …' : ''), duration: 5000 })
+    selected.value = errors.value[0].node || selected.value
     return
   }
   saving.value = true
@@ -365,6 +433,15 @@ onMounted(async () => {
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   box-shadow: 0 2px 6px rgba(64,158,255,.4); }
 .wf-empty-tip { text-align: center; color: #c0c4cc; font-size: 12px; margin-top: 10px; }
+.wf-errors {
+  width: 420px; margin: 0 auto 12px; background: #fef0f0; border: 1px solid #fde2e2;
+  border-radius: 8px; padding: 8px 10px;
+}
+.wf-error-item {
+  display: flex; align-items: center; gap: 6px; color: #f56c6c; font-size: 12px;
+  padding: 3px 0; cursor: pointer;
+}
+.wf-error-item:hover { text-decoration: underline; }
 .wf-menu { display: flex; flex-wrap: wrap; gap: 8px; }
 .wf-menu-item { display: flex; align-items: center; gap: 6px; width: 115px; padding: 9px 10px;
   cursor: pointer; background: #f8f9f9; border-radius: 8px; font-size: 13px; color: #606266; }
