@@ -191,8 +191,6 @@ def test_compile_validation_errors():
         flow_compiler.compile_tree({"type": "ROOT", "childNode": _approval("无审批人", users=[])})
     with pytest.raises(FlowCompileError):
         flow_compiler.compile_tree({"type": "ROOT", "childNode": _conditions([
-            {"type": "CONDITION", "props": {"groups": []}},
-        ])} if False else {"type": "ROOT", "childNode": _conditions([
             {"type": "CONDITION", "name": "A", "props": {"groups": [
                 {"groupType": "AND", "conditions": [{"field": "amount", "compare": ">", "value": []}]}]}},
             {"type": "CONDITION", "name": "B", "props": {"groups": []}},
@@ -204,3 +202,21 @@ def test_compile_validation_errors():
     with pytest.raises(FlowCompileError):
         flow_compiler.compile_tree({"type": "ROOT", "childNode": {
             "type": "UNKNOWN", "props": {}, "childNode": None}})
+
+
+def test_compile_string_and_array_conditions():
+    tree = {"type": "ROOT", "childNode": _conditions([
+        {"type": "CONDITION", "name": "文本", "props": {"groups": [
+            {"groupType": "AND", "conditions": [
+                {"field": "reason", "valueType": "String", "compare": "==", "value": ["紧急"]},
+                {"field": "tags", "valueType": "Array", "compare": "in", "value": ["加急", "特急"]},
+            ]}]},
+            "childNode": _approval("A", users=(1,))},
+        {"type": "CONDITION", "name": "默认", "props": {"groups": []}, "childNode": _approval("B", users=(2,))},
+    ])}
+    xml, _ = flow_compiler.compile_tree(tree)
+
+    wf = _run(xml, [(["A"], "approve")], {"reason": "紧急", "tags": ["加急"]})
+    assert bpmn_engine.reached_end(wf) == "end_approved"
+    _run(xml, [(["B"], "approve")], {"reason": "普通", "tags": ["加急"]})
+    _run(xml, [(["B"], "approve")], {"reason": "紧急", "tags": []})

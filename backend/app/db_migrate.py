@@ -69,6 +69,7 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS workflow_id INTEGER"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS tree JSONB"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS node_meta JSONB"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS form_items JSONB"))
 
 
 def run_startup_migrations(engine: Engine) -> None:

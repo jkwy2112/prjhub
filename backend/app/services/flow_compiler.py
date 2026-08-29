@@ -32,27 +32,49 @@ def _num(v, ctx=""):
             raise FlowCompileError(f"{ctx}条件值 {v!r} 不是数字")
 
 
+def _str(v):
+    s = str(v).replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{s}'"
+
+
 def _cond_expression(cond: dict) -> str:
     field = str(cond.get("field", "")).strip()
     if not field:
         raise FlowCompileError("条件字段不能为空")
     if not field.replace("_", "").isalnum():
         raise FlowCompileError(f"条件字段 {field} 不合法 (仅限字母数字下划线)")
+    vtype = cond.get("valueType") or "Number"
     op = cond.get("compare", "==")
     value = cond.get("value") or []
-    if op == "between":
-        if len(value) != 2:
-            raise FlowCompileError(f"条件「{field}」的区间比较需要 [下限, 上限] 两个值")
-        return f"({_num(value[0])} <= {field} <= {_num(value[1])})"
+
+    if vtype == "Number":
+        if op == "between":
+            if len(value) != 2:
+                raise FlowCompileError(f"条件「{field}」的区间比较需要 [下限, 上限] 两个值")
+            return f"({_num(value[0])} <= {field} <= {_num(value[1])})"
+        if op not in (">", ">=", "<", "<=", "=="):
+            raise FlowCompileError(f"数字字段不支持比较符 {op}")
+        if not value:
+            raise FlowCompileError(f"条件「{field}」缺少比较值")
+        return f"{field} {op} {_num(value[0], field)}"
+    if vtype == "Array":
+        if op != "in":
+            raise FlowCompileError("多选字段仅支持「属于」比较")
+        if not value:
+            raise FlowCompileError(f"条件「{field}」的枚举值不能为空")
+        options = ", ".join(_str(v) for v in value)
+        return f"len(set([{options}]) & set({field} or [])) > 0"
+    # String / Date
     if op == "in":
         if not value:
             raise FlowCompileError(f"条件「{field}」的枚举值不能为空")
-        return f"{field} in [{', '.join(str(_num(v, field)) for v in value)}]"
-    if op not in (">", ">=", "<", "<=", "=="):
-        raise FlowCompileError(f"不支持的比较符 {op}")
-    if not value:
-        raise FlowCompileError(f"条件「{field}」缺少比较值")
-    return f"{field} {op} {_num(value[0], field)}"
+        options = ", ".join(_str(v) for v in value)
+        return f"{field} in [{options}]"
+    if op in ("==", "!="):
+        if not value:
+            raise FlowCompileError(f"条件「{field}」缺少比较值")
+        return f"{field} {op} {_str(value[0])}"
+    raise FlowCompileError(f"文本字段不支持比较符 {op} (可用 = / 属于)")
 
 
 def _group_expression(group: dict) -> str:

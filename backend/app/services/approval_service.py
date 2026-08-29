@@ -18,7 +18,8 @@ END_STATUS = {"end_approved": "approved", "end_rejected": "rejected"}
 
 
 def deploy(db: Session, key: str, name: str, bpmn_xml: str,
-           tree: Optional[dict] = None, node_meta: Optional[dict] = None) -> ProcessDefinition:
+           tree: Optional[dict] = None, node_meta: Optional[dict] = None,
+           form_items: Optional[list] = None) -> ProcessDefinition:
     bpmn_engine.parse_spec(bpmn_xml)  # validate before storing
     last = (
         db.query(ProcessDefinition)
@@ -30,7 +31,8 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
     if last:
         last.is_active = False
     definition = ProcessDefinition(key=key, name=name or key, version=version,
-                                   bpmn_xml=bpmn_xml, tree=tree, node_meta=node_meta, is_active=True)
+                                   bpmn_xml=bpmn_xml, tree=tree, node_meta=node_meta,
+                                   form_items=form_items, is_active=True)
     db.add(definition)
     db.commit()
     db.refresh(definition)
@@ -38,10 +40,12 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
     return definition
 
 
-def deploy_tree(db: Session, key: str, name: str, tree: dict) -> ProcessDefinition:
+def deploy_tree(db: Session, key: str, name: str, tree: dict,
+                form_items: Optional[list] = None) -> ProcessDefinition:
     """Compile the designer tree and deploy (WFlow-style JSON as source of truth)."""
     from app.services import flow_compiler
 
+    _validate_form_items(form_items or [])
     bpmn_xml, node_meta = flow_compiler.compile_tree(tree)
     # fixed members must reference existing users (clear config-time feedback)
     bad = sorted({
@@ -53,7 +57,21 @@ def deploy_tree(db: Session, key: str, name: str, tree: dict) -> ProcessDefiniti
     })
     if bad:
         raise HTTPException(400, f"固定审批成员不存在: {bad}, 请重新选择")
-    return deploy(db, key, name, bpmn_xml, tree=tree, node_meta=node_meta)
+    return deploy(db, key, name, bpmn_xml, tree=tree, node_meta=node_meta,
+                  form_items=form_items)
+
+
+def _validate_form_items(items: list) -> None:
+    seen = set()
+    for item in items:
+        fid = str(item.get("id", "")).strip()
+        if not fid or not fid.replace("_", "").isalnum():
+            raise HTTPException(400, f"表单字段ID {fid!r} 不合法 (字母数字下划线)")
+        if fid in seen:
+            raise HTTPException(400, f"表单字段ID重复: {fid}")
+        seen.add(fid)
+        if not str(item.get("title", "")).strip():
+            raise HTTPException(400, f"字段 {fid} 缺少标题")
 
 
 def seed_templates(db: Session) -> None:
@@ -186,6 +204,17 @@ def _persist(db: Session, ticket: ApprovalTicket, wf) -> None:
     db.commit()
 
 
+def _form_defaults(definition: ProcessDefinition) -> dict:
+    """Every form field gets a typed default so gateway expressions never hit NameError."""
+    defaults: dict = {}
+    for item in definition.form_items or []:
+        vtype = item.get("valueType") or "String"
+        if item.get("name") == "Description":
+            continue
+        defaults[item["id"]] = [] if vtype == "Array" else (0 if vtype == "Number" else "")
+    return defaults
+
+
 def create_ticket(db: Session, definition_key: str, title: str, submitted_by: int,
                   variables: dict, project_id: Optional[int] = None,
                   task_id: Optional[int] = None) -> ApprovalTicket:
@@ -195,7 +224,8 @@ def create_ticket(db: Session, definition_key: str, title: str, submitted_by: in
     if task_id and not db.get(Task, task_id):
         raise HTTPException(404, "关联任务不存在")
 
-    start_vars = dict(variables or {})
+    start_vars = _form_defaults(definition)
+    start_vars.update(variables or {})
     start_vars.update(_start_variables(definition, variables or {}))
     wf = bpmn_engine.start_workflow(definition.bpmn_xml, variables=start_vars)
 

@@ -15,6 +15,7 @@ class DefinitionOut(BaseModel):
     version: int
     is_active: bool
     has_tree: bool = False
+    has_form: bool = False
     created_at: datetime
 
 
@@ -28,6 +29,7 @@ class TreeDeploy(BaseModel):
     key: str = Field(min_length=2, max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
     name: str = Field(default="", max_length=128)
     tree: dict
+    form_items: List[dict] = Field(default_factory=list)
 
 
 class TicketCreate(BaseModel):

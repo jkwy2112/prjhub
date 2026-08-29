@@ -83,6 +83,7 @@ class ProcessDefinition(Base):
     bpmn_xml: Mapped[str] = mapped_column(Text)
     tree: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)          # designer source
     node_meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)     # bpmn_id -> runtime meta
+    form_items: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)    # form designer source
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -79,16 +79,38 @@
         <el-form-item label="标题" required><el-input v-model="form.title" maxlength="255" /></el-form-item>
 
         <template v-if="currentDef && currentDef.has_tree">
-          <!-- visually designed flow: render runtime approver pickers from tree -->
-          <el-form-item v-for="rt in runtimeApprovers" :key="rt.id" :label="rt.name" :required="rt.required">
+          <!-- dynamically render the designed form -->
+          <template v-if="formFields.length">
+            <el-form-item v-for="f in formFields" :key="f.id" :label="f.title" :required="f.props?.required">
+              <el-input v-if="f.name === 'TextInput'" v-model="formValues[f.id]" :placeholder="f.props?.placeholder" />
+              <el-input v-else-if="f.name === 'TextareaInput'" v-model="formValues[f.id]" type="textarea" :rows="2" />
+              <el-input-number v-else-if="f.name === 'NumberInput'" v-model="formValues[f.id]" style="width: 200px" />
+              <el-input v-else-if="f.name === 'AmountInput'" v-model="formValues[f.id]" style="width: 200px">
+                <template #prepend>￥</template>
+              </el-input>
+              <el-select v-else-if="f.name === 'SelectInput'" v-model="formValues[f.id]" clearable style="width: 100%"
+                :placeholder="f.props?.placeholder || '请选择'">
+                <el-option v-for="o in f.props?.options || []" :key="o" :value="o" :label="o" />
+              </el-select>
+              <el-select v-else-if="f.name === 'MultipleSelect'" v-model="formValues[f.id]" multiple style="width: 100%"
+                :placeholder="f.props?.placeholder || '请选择'">
+                <el-option v-for="o in f.props?.options || []" :key="o" :value="o" :label="o" />
+              </el-select>
+              <el-date-picker v-else-if="f.name === 'DateTime'" v-model="formValues[f.id]" type="date"
+                value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-alert v-else-if="f.name === 'Description'" type="info" :closable="false" :title="f.props?.content" />
+            </el-form-item>
+          </template>
+          <el-form-item v-else label="金额">
+            <el-input-number v-model="form.amount" :min="0" :step="100" />
+            <span class="form-tip">供条件分支判断 (amount)</span>
+          </el-form-item>
+          <!-- runtime approvers from tree -->
+          <el-form-item v-for="rt in runtimeApprovers" :key="rt.tid" :label="rt.name" required>
             <el-select v-model="rt.users" multiple filterable remote :remote-method="searchUsers"
               placeholder="搜索并选择审批人" style="width: 100%">
               <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
             </el-select>
-          </el-form-item>
-          <el-form-item label="金额">
-            <el-input-number v-model="form.amount" :min="0" :step="100" />
-            <span class="form-tip">供条件分支判断 (amount)</span>
           </el-form-item>
         </template>
 
@@ -200,6 +222,8 @@ const detailVisible = ref(false)
 const detail = ref(null)
 const definitions = ref([])
 const runtimeApprovers = ref([])
+const formFields = ref([])
+const formValues = reactive({})
 
 const currentDef = computed(() => definitions.value.find((d) => d.key === form.definition_key))
 
@@ -211,10 +235,16 @@ const form = reactive({
 
 watch(() => form.definition_key, async (key) => {
   runtimeApprovers.value = []
+  formFields.value = []
+  Object.keys(formValues).forEach((k) => delete formValues[k])
   const def = definitions.value.find((d) => d.key === key)
   if (!def?.has_tree) return
   try {
     const { data } = await api.get(`/approvals/definitions/${def.id}/tree`)
+    formFields.value = (data.form_items || []).filter((i) => i.name !== 'Description')
+    formFields.value.forEach((f) => {
+      formValues[f.id] = f.valueType === 'Array' ? [] : (f.valueType === 'Number' ? 0 : '')
+    })
     const found = []
     const walk = (node) => {
       if (!node) return
@@ -291,9 +321,12 @@ async function submit() {
   if (!form.title.trim()) return ElMessage.warning('请填写标题')
   let variables
   if (currentDef.value?.has_tree) {
+    const missingField = formFields.value.find((f) => f.props?.required &&
+      (Array.isArray(formValues[f.id]) ? !formValues[f.id].length : !formValues[f.id] && formValues[f.id] !== 0))
+    if (missingField) return ElMessage.warning(`请填写「${missingField.title}」`)
     const missing = runtimeApprovers.value.find((rt) => !rt.users.length)
     if (missing) return ElMessage.warning(`请选择「${missing.name}」的审批人`)
-    variables = { amount: form.amount }
+    variables = { ...formValues }
     runtimeApprovers.value.forEach((rt) => { variables[`approver_${rt.tid}`] = rt.users })
   } else if (form.definition_key === 'parallel_approval') {
     if (!form.approver_fin || !form.approver_tech) return ElMessage.warning('并行分支审批人不能为空')

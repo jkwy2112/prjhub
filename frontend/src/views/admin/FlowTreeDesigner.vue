@@ -8,13 +8,22 @@
           :disabled="!!definitionId" />
       </div>
       <div>
-        <el-button size="small" @click="resetTree">清空重画</el-button>
+        <el-radio-group v-model="tab" size="small">
+          <el-radio-button value="form">表单设计</el-radio-button>
+          <el-radio-button value="process">流程设计</el-radio-button>
+        </el-radio-group>
+        <el-button v-if="tab === 'process'" size="small" @click="resetTree">清空重画</el-button>
         <el-button size="small" type="primary" :loading="saving" :icon="Check" @click="save">保存并发布</el-button>
       </div>
     </div>
 
     <div class="wf-body">
-      <div class="wf-canvas">
+      <div v-if="tab === 'form'" class="wf-form-pane">
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+          title="表单字段供发起人填写, 字段ID 可在流程设计的条件分支中引用 (数字/文本/多选支持比较)" />
+        <FormDesigner :items="formItems" />
+      </div>
+      <div v-else class="wf-canvas">
         <div class="wf-root-row">
           <div class="wf-start-pill">发起人 · 所有人</div>
           <div class="wf-link"></div>
@@ -45,7 +54,7 @@
         <div v-if="tree.childNode" class="wf-end-pill">流程结束 (通过 / 驳回)</div>
       </div>
 
-      <div class="wf-props">
+      <div class="wf-props" v-if="tab === 'process'">
         <el-empty v-if="!selected" description="点击节点配置属性" :image-size="70" />
         <template v-else>
           <h4>{{ typeLabel }}</h4>
@@ -103,19 +112,24 @@
                     @click="selected.props.groups.splice(gi, 1)">删除组</el-button>
                 </div>
                 <div v-for="(cond, ci) in group.conditions" :key="ci" class="cond-row">
-                  <el-input v-model="cond.field" placeholder="字段" style="width: 90px" size="small" />
+                  <el-select v-model="cond.field" filterable allow-create size="small" style="width: 130px"
+                    placeholder="表单字段" @change="onCondFieldChange(cond)">
+                    <el-option v-for="f in formFields" :key="f.id" :value="f.id"
+                      :label="`${f.title} (${f.id})`" />
+                  </el-select>
                   <el-select v-model="cond.compare" size="small" style="width: 86px">
-                    <el-option value=">" label=">" /><el-option value=">=" label=">=" />
-                    <el-option value="<" label="<" /><el-option value="<=" label="<=" />
-                    <el-option value="==" label="=" />
-                    <el-option value="between" label="区间" />
-                    <el-option value="in" label="属于" />
+                    <el-option v-for="c in comparesOf(cond)" :key="c.value" :value="c.value" :label="c.label" />
                   </el-select>
                   <template v-if="cond.compare === 'between'">
                     <el-input v-model="cond.value[0]" placeholder="下限" style="width: 70px" size="small" />
                     <el-input v-model="cond.value[1]" placeholder="上限" style="width: 70px" size="small" />
                   </template>
-                  <el-input v-else v-model="cond.value[0]" placeholder="值" style="width: 80px" size="small" />
+                  <template v-else-if="cond.compare === 'in' && fieldOptionsOf(cond).length">
+                    <el-select v-model="cond.value" multiple size="small" style="width: 130px" placeholder="选项值">
+                      <el-option v-for="o in fieldOptionsOf(cond)" :key="o" :value="o" :label="o" />
+                    </el-select>
+                  </template>
+                  <el-input v-else v-model="cond.value[0]" placeholder="值" style="width: 90px" size="small" />
                   <el-button text type="danger" size="small" @click="group.conditions.splice(ci, 1)">
                     <el-icon><Close /></el-icon>
                   </el-button>
@@ -126,7 +140,7 @@
                     组内: {{ group.groupType === 'AND' ? '且' : '或' }}
                   </el-button>
                   <el-button text size="small" :icon="Plus"
-                    @click="group.conditions.push({ field: 'amount', compare: '>', value: [0] })">加条件</el-button>
+                    @click="group.conditions.push(newCondition())">加条件</el-button>
                 </div>
               </div>
               <el-button text size="small" :icon="Plus"
@@ -170,12 +184,15 @@ import { ElMessage } from 'element-plus'
 import { Back, Plus, Check, Close, User, Share, Operation } from '@element-plus/icons-vue'
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
+import FormDesigner from '../../components/form/FormDesigner.vue'
 
 const route = useRoute()
 const definitionId = route.params.id ? Number(route.params.id) : null
 
 const defKey = ref('')
 const defName = ref('')
+const tab = ref('form')
+const formItems = ref([])
 const tree = reactive({ type: 'ROOT', name: '发起人', childNode: null })
 const selected = ref(null)
 const saving = ref(false)
@@ -187,6 +204,30 @@ const typeLabel = computed(() => ({
 }[selected.value?.type] || ''))
 
 const groupsWithCond = computed(() => selected.value?.props?.groups || [])
+
+// form-field aware condition editing
+import { COMPARE_BY_TYPE } from '../../components/form/formComponents'
+const formFields = computed(() => formItems.value.filter((i) => i.name !== 'Description'))
+const fieldOf = (cond) => formFields.value.find((f) => f.id === cond.field)
+const comparesOf = (cond) => COMPARE_BY_TYPE[cond.valueType || fieldOf(cond)?.valueType || 'Number'] || COMPARE_BY_TYPE.Number
+const fieldOptionsOf = (cond) => fieldOf(cond)?.props?.options || []
+function onCondFieldChange(cond) {
+  const f = fieldOf(cond)
+  cond.valueType = f?.valueType || null
+  const first = comparesOf(cond)[0]?.value || '=='
+  cond.compare = first
+  cond.value = first === 'between' ? [0, 0] : [null]
+}
+function newCondition() {
+  const f = formFields.value[0]
+  const cond = { field: f?.id || '', valueType: f?.valueType || null, compare: '==', value: [''] }
+  const first = comparesOf(cond)[0]?.value
+  if (first && first !== '==') {
+    cond.compare = first
+    cond.value = first === 'between' ? [0, 0] : ['']
+  }
+  return cond
+}
 const hasAnyCondition = computed(
   () => !(selected.value?.props?.groups || []).some((g) => (g.conditions || []).length))
 
@@ -284,6 +325,7 @@ async function save() {
   try {
     await api.post('/approvals/definitions/tree', {
       key: defKey.value.trim(), name: defName.value.trim(), tree,
+      form_items: formItems.value,
     })
     ElMessage.success('流程已发布 (新版本立即生效, 在途单按旧版跑完)')
   } catch { /* interceptor shows compile error */ } finally {
@@ -296,6 +338,7 @@ onMounted(async () => {
     const { data } = await api.get(`/approvals/definitions/${definitionId}/tree`)
     defKey.value = data.key
     defName.value = data.name
+    formItems.value = data.form_items || []
     Object.assign(tree, data.tree || { type: 'ROOT', childNode: null })
     await loadUsersByIds(collectUserIds(tree.childNode, []))
   }
@@ -309,6 +352,7 @@ onMounted(async () => {
   padding: 8px 12px; border-bottom: 1px solid #ebeef5; }
 .wf-toolbar-left { display: flex; align-items: center; gap: 8px; }
 .wf-body { flex: 1; display: flex; min-height: 0; }
+.wf-form-pane { flex: 1; overflow: auto; }
 .wf-canvas { flex: 1; overflow: auto; padding: 24px 40px 60px;
   background: radial-gradient(circle, #eef1f5 1px, transparent 1px) 0 0 / 20px 20px, #f7f8fa; }
 .wf-root-row { display: flex; flex-direction: column; align-items: center; }

@@ -33,6 +33,7 @@ def list_definitions(db: Session = Depends(get_db), user: User = Depends(get_cur
     ):
         item = DefinitionOut.model_validate(d)
         item.has_tree = bool(d.tree)
+        item.has_form = bool(d.form_items)
         out.append(item)
     return out
 
@@ -44,23 +45,25 @@ def deploy_definition(body: DefinitionDeploy, db: Session = Depends(get_db),
 
 
 @router.post("/definitions/tree", response_model=DefinitionOut, status_code=201,
-             summary="保存可视化设计的流程树(超管, 自动编译为 BPMN)")
+             summary="保存可视化设计的流程(超管, 表单+流程树一起编译部署)")
 def deploy_tree(body: TreeDeploy, db: Session = Depends(get_db), user: User = Depends(get_admin_user)):
     from app.services.flow_compiler import FlowCompileError
 
     try:
-        return approval_service.deploy_tree(db, body.key, body.name, body.tree)
+        return approval_service.deploy_tree(db, body.key, body.name, body.tree,
+                                            form_items=body.form_items)
     except FlowCompileError as exc:
         raise HTTPException(400, str(exc))
 
 
-@router.get("/definitions/{definition_id}/tree", summary="读取流程树(设计器回显/发起表单解析)")
+@router.get("/definitions/{definition_id}/tree", summary="读取流程树+表单(设计器回显/发起表单解析)")
 def get_tree(definition_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     definition = db.get(ProcessDefinition, definition_id)
     if not definition:
         raise HTTPException(404, "流程定义不存在")
     return {"id": definition.id, "key": definition.key, "name": definition.name,
-            "version": definition.version, "tree": definition.tree}
+            "version": definition.version, "tree": definition.tree,
+            "form_items": definition.form_items or []}
 
 
 @router.post("", response_model=TicketDetail, status_code=201, summary="发起审批")
