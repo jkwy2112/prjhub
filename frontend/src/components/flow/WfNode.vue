@@ -38,15 +38,15 @@
       </el-popover>
     </div>
 
-    <!-- branch group -->
+    <!-- branch group (dingtalk-style cover lines create fork/join visuals, see wflow ProcessTree) -->
     <div v-if="node.type === 'CONDITIONS' || node.type === 'CONCURRENTS'" class="wf-branch-group">
-      <div class="wf-branch-head">
-        <span class="wf-branch-add" @click="addBranch">
-          <el-icon><Plus /></el-icon> 添加{{ node.type === 'CONDITIONS' ? '条件' : '分支' }}
-        </span>
+      <div class="wf-branch-add" @click="addBranch">
+        <el-button size="small" round>添加{{ node.type === 'CONDITIONS' ? '条件' : '分支' }}</el-button>
       </div>
       <div class="wf-branch-cols">
         <div v-for="(branch, i) in node.branches" :key="i" class="wf-branch-col">
+          <span v-if="i === 0" class="cover tl" /><span v-if="i === 0" class="cover bl" />
+          <span v-if="i === node.branches.length - 1" class="cover tr" /><span v-if="i === node.branches.length - 1" class="cover br" />
           <div class="wf-branch-col-head" @click="$emit('select', branch)">
             <span class="wf-branch-col-move" v-if="node.type === 'CONDITIONS' && i > 0"
               @click.stop="moveBranch(i, -1)"><el-icon><ArrowLeft /></el-icon></span>
@@ -54,7 +54,7 @@
             <span class="wf-branch-col-move" v-if="node.type === 'CONDITIONS' && i < node.branches.length - 1"
               @click.stop="moveBranch(i, 1)"><el-icon><ArrowRight /></el-icon></span>
             <span class="wf-branch-col-del" v-if="node.branches.length > 2"
-              @click.stop="node.branches.splice(i, 1)"><el-icon><Close /></el-icon></span>
+              @click.stop="removeBranch(i)"><el-icon><Close /></el-icon></span>
           </div>
           <div class="wf-branch-chain">
             <WfNode v-if="branch.childNode" :node="branch.childNode" :selected="selected"
@@ -148,6 +148,7 @@ function newNode(type) {
 
 function addBranch() {
   const n = props.node
+  if (n.branches.length >= 8) return  // wflow convention: max 8 branches
   if (n.type === 'CONDITIONS') {
     const defIdx = n.branches.findIndex((b) => !b.props?.groups?.some((g) => g.conditions?.length))
     const branch = { type: 'CONDITION', name: `条件${n.branches.length}`, childNode: null,
@@ -157,6 +158,12 @@ function addBranch() {
   } else {
     n.branches.push({ type: 'BRANCH', name: `分支${n.branches.length + 1}`, childNode: null })
   }
+}
+
+function removeBranch(i) {
+  const n = props.node
+  // keep >= 2 branches by design; deleting is disabled in UI when only 2 remain
+  n.branches.splice(i, 1)
 }
 
 function moveBranch(i, delta) {
@@ -211,31 +218,40 @@ function removeSelf() {
   background: #f8f9f9; border-radius: 8px; font-size: 13px; color: #606266;
 }
 .wf-menu-item:hover { background: #fff; box-shadow: 0 0 8px 2px #d6d6d6; }
+
+/* dingtalk-style branch group: top/bottom rails + per-column spine + cover lines */
 .wf-branch-group {
-  width: 100%; border-left: 2px dashed #c8d0da; border-right: 2px dashed #c8d0da;
-  border-bottom: 2px dashed #c8d0da; border-radius: 0 0 14px 14px; padding: 4px 14px 14px;
-  display: flex; flex-direction: column; align-items: center; background: rgba(64,158,255,.02);
+  position: relative; width: 100%; display: flex; flex-direction: column; align-items: center;
+  padding: 18px 14px 14px; background: rgba(64,158,255,.02);
+  border-top: 2px solid #cccccc; border-bottom: 2px solid #cccccc;
 }
-.wf-branch-head { padding: 6px 0; }
-.wf-branch-add {
-  font-size: 12px; color: #409eff; background: #ecf5ff; border: 1px solid #d9ecff; border-radius: 13px;
-  padding: 2px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 3px;
+.wf-branch-add { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); z-index: 3; }
+.wf-branch-cols { display: flex; justify-content: center; flex-wrap: wrap; }
+.wf-branch-col {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  min-width: 270px; padding: 10px 14px;
+  border-top: 2px solid #cccccc; border-bottom: 2px solid #cccccc; background: transparent;
 }
-.wf-branch-add:hover { background: #d9ecff; }
-.wf-branch-cols { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.wf-branch-col { display: flex; flex-direction: column; min-width: 270px; flex: 1; }
+.wf-branch-col::before {
+  content: ""; position: absolute; top: 0; left: calc(50% - 1px); width: 2px; height: 100%;
+  background: #cacaca;
+}
+.cover { position: absolute; width: 50%; height: 4px; background: #fff; z-index: 1; }
+.cover.tl { top: -2px; left: -1px; }
+.cover.tr { top: -2px; right: -1px; }
+.cover.bl { bottom: -2px; left: -1px; }
+.cover.br { bottom: -2px; right: -1px; }
 .wf-branch-col-head {
-  display: flex; align-items: center; justify-content: center; gap: 6px; padding: 4px 10px;
-  background: #f0faf7; border: 1px solid #15bc83; color: #15bc83; border-radius: 14px;
-  font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 10px;
+  position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 4px 10px; background: #f0faf7; border: 1px solid #15bc83; color: #15bc83;
+  border-radius: 14px; font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 10px;
 }
 .wf-branch-col-head:hover { background: #e2f7f0; }
 .wf-branch-col-move, .wf-branch-col-del { color: #909399; display: flex; align-items: center; }
 .wf-branch-col-del:hover { color: #f56c6c; }
-.wf-branch-chain { display: flex; flex-direction: column; align-items: center; }
+.wf-branch-chain { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; }
 .wf-branch-empty {
   width: 220px; text-align: center; padding: 14px 0; color: #c0c4cc; font-size: 12px;
-  border: 1px dashed #dcdfe6; border-radius: 8px; cursor: pointer;
+  border: 1px dashed #dcdfe6; border-radius: 8px; cursor: pointer; background: #fff;
 }
-.wf-root-row { display: flex; flex-direction: column; align-items: center; }
 </style>

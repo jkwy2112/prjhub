@@ -6,11 +6,21 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user, get_task_or_404, require_project_access
-from app.models import Activity, Comment, Project, ProjectMember, Task, User
+from app.models import Activity, Comment, Project, ProjectMember, ProjectRole, Task, User
 from app.schemas import CommentCreate, CommentOut, TaskCreate, TaskDetail, TaskOut, TaskUpdate
-from app.services import workflow_service
 
 router = APIRouter(tags=["tasks"])
+
+# fixed task status flow (the only "workflow" for project tasks; approvals live on BPMN)
+STATUSES = ["todo", "in_progress", "testing", "done"]
+STATUS_LABELS = {"todo": "待办", "in_progress": "进行中", "testing": "测试中", "done": "已完成"}
+STATUS_FLOW = {
+    "todo": {"in_progress", "done"},
+    "in_progress": {"todo", "testing", "done"},
+    "testing": {"in_progress", "done"},
+    "done": {"todo"},
+}
+DONE = "done"
 
 
 def _ensure_task_access(task: Task, user: User, db: Session):
@@ -34,11 +44,6 @@ def _to_out(db: Session, task: Task) -> TaskOut:
     out = TaskOut.model_validate(task)
     out.comments_count = db.query(Comment).filter(Comment.task_id == task.id).count()
     return out
-
-
-def _status_name(wf, key: str) -> str:
-    node = workflow_service.node_map(wf).get(key)
-    return node.name if node else key
 
 
 @router.get("/projects/{project_id}/tasks", response_model=List[TaskOut], summary="项目任务列表(可按状态/关键词过滤)")
@@ -75,7 +80,6 @@ def create_task(
     access: "tuple[Project, Optional[object]]" = Depends(require_project_access),
 ):
     project, _ = access
-    wf = workflow_service.project_workflow(db, project)
     number = (
         db.query(func.coalesce(func.max(Task.number), 0))
         .filter(Task.project_id == project.id)
@@ -86,7 +90,7 @@ def create_task(
         number=number,
         created_by=user.id,
         task_order=number,
-        status=workflow_service.initial_key(wf),
+        status="todo",
         **body.model_dump(),
     )
     db.add(task)
@@ -108,7 +112,7 @@ def get_task(
     return task
 
 
-@router.put("/tasks/{task_id}", response_model=TaskDetail, summary="更新任务(按自定义工作流校验流转)")
+@router.put("/tasks/{task_id}", response_model=TaskDetail, summary="更新任务(状态按固定流转规则校验)")
 def update_task(
     task_id: int,
     body: TaskUpdate,
@@ -118,24 +122,19 @@ def update_task(
     task = get_task_or_404(db, task_id)
     _ensure_task_access(task, user, db)
     changes = body.model_dump(exclude_unset=True)
-    project = db.get(Project, task.project_id)
-    wf = workflow_service.project_workflow(db, project)
 
     new_status = changes.pop("status", None)
     if new_status is not None and new_status != task.status:
-        nodes = workflow_service.node_map(wf)
-        if new_status not in nodes:
+        if new_status not in STATUSES:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, f"状态 {new_status} 不存在")
-        if not workflow_service.can_transition(wf, task.status, new_status):
+        allowed = STATUS_FLOW.get(task.status, set())
+        if new_status not in allowed:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                f"工作流不允许从「{_status_name(wf, task.status)}」流转到「{_status_name(wf, new_status)}」",
+                f"不允许从「{STATUS_LABELS[task.status]}」流转到「{STATUS_LABELS[new_status]}」",
             )
-        allowed, reason = workflow_service.can_handle(db, wf, new_status, user, project, task)
-        if not allowed:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, reason)
         _log(db, task, user, "status",
-             f"将状态从「{_status_name(wf, task.status)}」改为「{_status_name(wf, new_status)}」")
+             f"将状态从「{STATUS_LABELS[task.status]}」改为「{STATUS_LABELS[new_status]}」")
         task.status = new_status
 
     if "assignee_id" in changes and changes["assignee_id"] != task.assignee_id:
@@ -201,9 +200,7 @@ def my_tasks(
     if status:
         query = query.filter(Task.status == status)
     else:
-        done = workflow_service.done_keys(workflow_service.default_workflow(db))
-        if done:
-            query = query.filter(Task.status.notin_(done))
+        query = query.filter(Task.status != DONE)
     return [_to_out(db, t) for t in query.order_by(Task.updated_at.desc()).limit(200).all()]
 
 
@@ -215,7 +212,4 @@ def my_overview(db: Session = Depends(get_db), user: User = Depends(get_current_
         .group_by(Task.status)
         .all()
     )
-    wf = workflow_service.default_workflow(db)
-    data = {n.key: rows.get(n.key, 0) for n in wf.nodes}
-    data["other"] = sum(v for k, v in rows.items() if k not in data)
-    return data
+    return {s: rows.get(s, 0) for s in STATUSES}

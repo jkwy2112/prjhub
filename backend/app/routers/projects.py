@@ -16,7 +16,7 @@ from app.schemas import (
     ProjectOut,
     ProjectUpdate,
 )
-from app.services import git_service, workflow_service
+from app.services import git_service
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -147,52 +147,6 @@ def delete_project(
     db.delete(project)
     db.commit()
     git_service.delete_repo(key)
-
-
-@router.get("/{project_id}/workflow", summary="项目使用的工作流(含节点/连线/处理人)")
-def get_project_workflow(
-    access: "tuple[Project, Optional[ProjectRole]]" = Depends(require_project_access),
-    db: Session = Depends(get_db),
-):
-    project, _ = access
-    wf = workflow_service.project_workflow(db, project)
-    payload = workflow_service.workflow_payload(wf)
-    payload["bound_workflow_id"] = project.workflow_id
-    return payload
-
-
-class WorkflowBind(BaseModel):
-    workflow_id: Optional[int] = None  # None -> 使用系统默认
-
-
-@router.put("/{project_id}/workflow", summary="绑定/切换项目工作流(项目管理员)")
-def bind_project_workflow(
-    body: WorkflowBind,
-    access: "tuple[Project, Optional[ProjectRole]]" = Depends(require_project_admin),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user),
-):
-    project, _ = access
-    if body.workflow_id is not None:
-        wf = workflow_service.get_or_404(db, body.workflow_id)
-    else:
-        wf = workflow_service.default_workflow(db)
-
-    old_wf = workflow_service.project_workflow(db, project)
-    migrated = 0
-    if old_wf.id != wf.id:
-        incoming = {n.key for n in wf.nodes}
-        initial = workflow_service.initial_key(wf)
-        migrated = (
-            db.query(Task)
-            .filter(Task.project_id == project.id,
-                    Task.status.notin_(incoming) | Task.status.is_(None))
-            .update({Task.status: initial}, synchronize_session=False)
-        )
-    project.workflow_id = body.workflow_id
-    _log_activity(db, project, user, "update", f"切换了项目工作流为「{wf.name}」")
-    db.commit()
-    return {"ok": True, "migrated": migrated, "workflow": workflow_service.workflow_payload(wf)}
 
 
 @router.get("/{project_id}/members", response_model=List[MemberOut], summary="项目成员列表")

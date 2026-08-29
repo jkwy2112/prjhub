@@ -3,7 +3,7 @@
     <div class="toolbar">
       <el-radio-group v-model="statusFilter">
         <el-radio-button value="">全部未完成</el-radio-button>
-        <el-radio-button v-for="s in wf.statuses" :key="s.key" :value="s.key">{{ s.name }}</el-radio-button>
+        <el-radio-button v-for="(m, k) in STATUS_META" :key="k" :value="k">{{ m.label }}</el-radio-button>
       </el-radio-group>
     </div>
     <el-table :data="tasks" v-loading="loading" @row-click="open" style="cursor: pointer; background: #fff; border-radius: 8px">
@@ -22,8 +22,8 @@
       </el-table-column>
       <el-table-column label="状态" width="110">
         <template #default="{ row }">
-          <el-tag size="small" :color="wf.colorOf(row.status)" style="border: none; color: #fff">
-            {{ wf.labelOf(row.status) }}
+          <el-tag size="small" :color="STATUS_META[row.status].color" style="border: none; color: #fff">
+            {{ STATUS_META[row.status].label }}
           </el-tag>
         </template>
       </el-table-column>
@@ -47,11 +47,9 @@
 import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
-import { TYPE_META, PRIORITY_META, fmtDate, fmtDateTime } from '../constants'
-import { useWorkflowStore } from '../stores/workflow'
+import { STATUS_META, TYPE_META, PRIORITY_META, fmtDate, fmtDateTime } from '../constants'
 
 const router = useRouter()
-const wf = useWorkflowStore()
 const loading = ref(false)
 const tasks = ref([])
 const projectMap = ref({})
@@ -79,7 +77,7 @@ function open(row) {
   router.push(`/projects/${row.project_id}?task=${row.id}`)
 }
 
-onMounted(() => { wf.fetch(); load() })
+onMounted(load)
 watch(statusFilter, load)
 </script>
 

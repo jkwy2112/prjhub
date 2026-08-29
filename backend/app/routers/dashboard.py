@@ -8,9 +8,10 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.models import Activity, ProjectMember, Task, TaskType, User
 from app.schemas import ActivityOut, DashboardOut, TaskOut
-from app.services import workflow_service
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+STATUSES = ["todo", "in_progress", "testing", "done"]
 
 
 @router.get("", response_model=DashboardOut, summary="仪表盘")
@@ -29,26 +30,22 @@ def dashboard(
     else:
         base = base.filter(Task.id < 0)  # no projects yet -> empty set
 
-    statuses = workflow_service.default_workflow(db).nodes
-    done = [s.key for s in statuses if s.is_done]
-
-    my_open = base.filter(Task.assignee_id == user.id, Task.status.notin_(done)).count()
+    my_open = base.filter(Task.assignee_id == user.id, Task.status != "done").count()
     overdue = base.filter(
         Task.assignee_id == user.id,
-        Task.status.notin_(done),
+        Task.status != "done",
         Task.due_date.is_not(None),
         Task.due_date < func.now(),
     ).count()
-    done_count = base.filter(Task.assignee_id == user.id, Task.status.in_(done)).count()
+    done_count = base.filter(Task.assignee_id == user.id, Task.status == "done").count()
 
     status_rows = dict(base.with_entities(Task.status, func.count(Task.id)).group_by(Task.status).all())
-    distribution = {s.key: status_rows.get(s.key, 0) for s in statuses}
-    distribution["other"] = sum(v for k, v in status_rows.items() if k not in distribution)
+    distribution = {s: status_rows.get(s, 0) for s in STATUSES}
     type_rows = dict(base.with_entities(Task.type, func.count(Task.id)).group_by(Task.type).all())
 
     my_recent = (
         db.query(Task)
-        .filter(Task.assignee_id == user.id, Task.status.notin_(done))
+        .filter(Task.assignee_id == user.id, Task.status != "done")
         .order_by(Task.updated_at.desc())
         .limit(10)
         .all()

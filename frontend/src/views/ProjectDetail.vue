@@ -17,11 +17,11 @@
     <el-tabs v-model="tab">
       <el-tab-pane label="看板" name="kanban">
         <div class="kanban" v-loading="loadingTasks">
-          <div v-for="col in wf.statuses" :key="col.key" class="kanban-col"
-            @dragover.prevent @drop="onDrop($event, col.key)">
+          <div v-for="col in STATUS_ORDER" :key="col" class="kanban-col"
+            @dragover.prevent @drop="onDrop($event, col)">
             <div class="kanban-col-head">
-              <el-tag :color="col.color" effect="dark" style="border: none" size="small">
-                {{ col.name }}
+              <el-tag :color="STATUS_META[col].color" effect="dark" style="border: none" size="small">
+                {{ STATUS_META[col].label }}
               </el-tag>
               <span class="kanban-count">{{ byStatus[col.key]?.length || 0 }}</span>
             </div>
@@ -47,7 +47,7 @@
                 </span>
               </div>
             </div>
-            <el-button v-if="col.is_initial" text size="small" class="add-card" @click="openCreate">
+            <el-button v-if="col === 'todo'" text size="small" class="add-card" @click="openCreate">
               + 添加任务
             </el-button>
           </div>
@@ -58,7 +58,7 @@
         <div class="list-toolbar">
           <el-input v-model="listQuery" placeholder="搜索标题或编号" clearable style="width: 240px" :prefix-icon="Search" />
           <el-select v-model="listStatus" placeholder="全部状态" clearable style="width: 140px">
-            <el-option v-for="s in wf.statuses" :key="s.key" :value="s.key" :label="s.name" />
+            <el-option v-for="(m, k) in STATUS_META" :key="k" :value="k" :label="m.label" />
           </el-select>
           <el-select v-model="listAssignee" placeholder="全部负责人" clearable style="width: 140px">
             <el-option v-for="m in members" :key="m.user_id" :value="m.user_id"
@@ -189,24 +189,6 @@
         </el-card>
 
         <el-card shadow="never" style="max-width: 640px; margin-top: 16px">
-          <template #header><b>工作流</b></template>
-          <div class="wf-bind-row">
-            <el-select v-model="bindingWorkflow" style="width: 280px" placeholder="使用系统默认工作流"
-              @focus="loadWorkflowOptions">
-              <el-option :value="null" label="系统默认工作流" />
-              <el-option v-for="w in workflowOptions" :key="w.id" :value="w.id"
-                :label="`${w.name} (${w.node_count}个状态${w.is_default ? ', 默认' : ''})`" />
-            </el-select>
-            <el-button type="primary" :loading="binding" @click="bindWorkflow">切换工作流</el-button>
-          </div>
-          <p class="wf-bind-tip">
-            当前: <b>{{ projectWorkflow?.name }}</b>
-            ({{ wf.statuses.map((s) => s.name).join(' → ') }});
-            切换后不在新工作流中的任务会自动迁移到初始状态
-          </p>
-        </el-card>
-
-        <el-card shadow="never" style="max-width: 640px; margin-top: 16px">
           <template #header><b>Git 仓库</b></template>
           <template v-if="project.repo_path">
             <el-descriptions :column="1" border size="small">
@@ -237,7 +219,7 @@
     <TaskDialog v-model="taskDialog" :project-id="project.id" :members="members" :task="editingTask"
       @saved="loadTasks" />
     <TaskDrawer v-model="taskDrawer" :task-id="drawerTaskId" :project-key="project.key" :members="members"
-      :statuses="wf.statuses" @changed="loadTasks" />
+      :statuses="statuses" @changed="loadTasks" />
   </div>
 </template>
 
@@ -247,25 +229,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, FolderOpened, ChatDotRound } from '@element-plus/icons-vue'
 import api from '../api'
-import { TYPE_META, PRIORITY_META, ROLE_META, fmtDate, fmtDateTime } from '../constants'
+import { STATUS_META, STATUS_ORDER, TYPE_META, PRIORITY_META, ROLE_META, fmtDate, fmtDateTime } from '../constants'
 import TaskDialog from '../components/TaskDialog.vue'
 import TaskDrawer from '../components/TaskDrawer.vue'
 
-// project-bound workflow (fallback: system default from store)
-import { useWorkflowStore } from '../stores/workflow'
-
-const wfStore = useWorkflowStore()
-const projectWorkflow = ref(null) // {id,name,nodes,bound_workflow_id}
-const wf = {
-  get statuses() {
-    return projectWorkflow.value?.nodes || wfStore.statuses
-  },
-}
-const statusMap = computed(() => Object.fromEntries(wf.statuses.map((s) => [s.key, s])))
-const labelOf = (k) => statusMap.value[k]?.name || k
-const colorOf = (k) => statusMap.value[k]?.color || '#909399'
-const isDone = (k) => statusMap.value[k]?.is_done || false
-const initialKey = computed(() => wf.statuses.find((s) => s.is_initial)?.key || '')
+const statuses = STATUS_ORDER.map((k) => ({ key: k, ...STATUS_META[k], is_done: k === 'done' }))
+const labelOf = (k) => STATUS_META[k]?.label || k
+const colorOf = (k) => STATUS_META[k]?.color || '#909399'
+const isDone = (k) => k === 'done'
 
 const route = useRoute()
 const router = useRouter()
@@ -299,11 +270,10 @@ const canAdmin = computed(() => ['owner', 'admin'].includes(project.value?.my_ro
 const memberMap = computed(() => Object.fromEntries(members.value.map((m) => [m.user_id, m])))
 const byStatus = computed(() => {
   const map = {}
-  for (const s of wf.statuses) map[s.key] = []
-  const fallback = initialKey.value
+  for (const s of STATUS_ORDER) map[s] = []
   for (const t of tasks.value) {
     if (map[t.status]) map[t.status].push(t)
-    else if (map[fallback]) map[fallback].push(t)
+    else map.todo.push(t)
   }
   return map
 })
@@ -322,36 +292,6 @@ const filteredTasks = computed(() =>
 
 function isOverdue(t) {
   return t.due_date && new Date(t.due_date) < new Date() && !isDone(t.status)
-}
-
-async function loadProjectWorkflow() {
-  const { data } = await api.get(`/projects/${projectId}/workflow`)
-  projectWorkflow.value = data
-  bindingWorkflow.value = data.bound_workflow_id ?? null
-}
-
-const workflowOptions = ref([])
-
-async function loadWorkflowOptions() {
-  const { data } = await api.get('/workflows')
-  workflowOptions.value = data
-}
-
-const bindingWorkflow = ref(null)
-const binding = ref(false)
-
-async function bindWorkflow() {
-  binding.value = true
-  try {
-    const { data } = await api.put(`/projects/${projectId}/workflow`,
-      { workflow_id: bindingWorkflow.value })
-    if (data.migrated) ElMessage.warning(`工作流已切换, ${data.migrated} 个任务迁移到初始状态`)
-    else ElMessage.success('工作流已切换')
-    await loadProjectWorkflow()
-    await loadTasks()
-  } catch { /* interceptor */ } finally {
-    binding.value = false
-  }
 }
 
 async function loadProject() {
@@ -465,7 +405,7 @@ async function deleteProject() {
 }
 
 onMounted(async () => {
-  await Promise.all([wfStore.fetch(), loadProjectWorkflow(), loadProject(), loadTasks(), loadMembers(), loadActivities()])
+  await Promise.all([loadProject(), loadTasks(), loadMembers(), loadActivities()])
   if (route.query.task) {
     drawerTaskId.value = Number(route.query.task)
     taskDrawer.value = true

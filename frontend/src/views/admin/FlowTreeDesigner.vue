@@ -249,11 +249,37 @@ function collectUserIds(node, acc) {
   return acc
 }
 
+function collectErrors(node, errs) {
+  if (!node) return
+  if (node.type === 'APPROVAL') {
+    if (node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
+      errs.push(`「${node.name}」未指定审批成员`)
+    }
+  }
+  ;(node.branches || []).forEach((b) => {
+    if (b.type === 'CONDITION') {
+      const hasCond = (b.props?.groups || []).some((g) => (g.conditions || []).length)
+      const validConds = (b.props?.groups || []).every((g) =>
+        (g.conditions || []).every((c) => c.field && c.value?.length && c.value[0] !== ''))
+      if (!hasCond) errs.push(`条件分支「${b.name}」未设置条件 (无条件=默认分支)`)
+      else if (!validConds) errs.push(`条件分支「${b.name}」存在未填写完整的条件`)
+    }
+    collectErrors(b.childNode, errs)
+  })
+  collectErrors(node.childNode, errs)
+}
+
 async function save() {
   if (!defKey.value.trim() || !defName.value.trim()) {
     return ElMessage.warning('请填写流程标识和名称')
   }
   if (!tree.childNode) return ElMessage.warning('流程至少需要一个节点')
+  const errs = []
+  collectErrors(tree.childNode, errs)
+  if (errs.length) {
+    ElMessage.warning({ message: errs.slice(0, 3).join('; ') + (errs.length > 3 ? ' …' : ''), duration: 5000 })
+    return
+  }
   saving.value = true
   try {
     await api.post('/approvals/definitions/tree', {

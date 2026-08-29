@@ -114,7 +114,7 @@ def test_dashboard(client, admin_headers):
     assert d.status_code == 200
     body = d.json()
     assert body["project_count"] >= 1
-    assert set(body["status_distribution"].keys()) == {"todo", "in_progress", "testing", "done", "other"}
+    assert set(body["status_distribution"].keys()) == {"todo", "in_progress", "testing", "done"}
 
 
 def test_project_delete_removes_repo(client, admin_headers):

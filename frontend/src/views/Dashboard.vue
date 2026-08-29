@@ -30,8 +30,8 @@
             </el-table-column>
             <el-table-column label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :color="wf.colorOf(row.status)" effect="light" size="small" style="border: none">
-                  {{ wf.labelOf(row.status) }}
+                <el-tag :color="STATUS_META[row.status].color" effect="light" size="small" style="border: none">
+                  {{ STATUS_META[row.status].label }}
                 </el-tag>
               </template>
             </el-table-column>
@@ -64,8 +64,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
-import { TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
-import { useWorkflowStore } from '../stores/workflow'
+import { STATUS_META, STATUS_ORDER, TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
@@ -75,7 +74,6 @@ import VChart from 'vue-echarts'
 use([CanvasRenderer, BarChart, GridComponent, TooltipComponent])
 
 const router = useRouter()
-const wf = useWorkflowStore()
 const loading = ref(false)
 const dash = reactive({})
 
@@ -89,14 +87,14 @@ const statCards = computed(() => [
 const statusChartOption = computed(() => ({
   tooltip: { trigger: 'axis' },
   grid: { left: 40, right: 20, top: 20, bottom: 30 },
-  xAxis: { type: 'category', data: wf.statuses.map((s) => s.name) },
+  xAxis: { type: 'category', data: STATUS_ORDER.map((k) => STATUS_META[k].label) },
   yAxis: { type: 'value', minInterval: 1 },
   series: [{
     type: 'bar',
     barWidth: 40,
-    data: wf.statuses.map((s) => ({
-      value: dash.status_distribution?.[s.key] || 0,
-      itemStyle: { color: s.color, borderRadius: [4, 4, 0, 0] },
+    data: STATUS_ORDER.map((k) => ({
+      value: dash.status_distribution?.[k] || 0,
+      itemStyle: { color: STATUS_META[k].color, borderRadius: [4, 4, 0, 0] },
     })),
   }],
 }))
@@ -112,7 +110,7 @@ function openTask(row) {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([wf.fetch(), api.get('/dashboard').then(({ data }) => Object.assign(dash, data))])
+    api.get('/dashboard').then(({ data }) => Object.assign(dash, data))
   } finally {
     loading.value = false
   }

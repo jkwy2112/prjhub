@@ -72,9 +72,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import api from '../../api'
-import { useWorkflowStore } from '../../stores/workflow'
-
-const wf = useWorkflowStore()
+import { STATUS_META } from '../../constants'
 const loading = ref(false)
 const stats = reactive({})
 
@@ -95,7 +93,7 @@ function pct(v) {
 onMounted(async () => {
   loading.value = true
   try {
-    await Promise.all([wf.fetch(), api.get('/admin/stats').then(({ data }) => Object.assign(stats, data))])
+    api.get('/admin/stats').then(({ data }) => Object.assign(stats, data))
   } finally {
     loading.value = false
   }

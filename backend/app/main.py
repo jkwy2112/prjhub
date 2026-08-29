@@ -9,8 +9,8 @@ from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
 from app.db_migrate import run_startup_migrations
 from app.models import AuthType, Project, ProjectMember, ProjectRole, Task, TaskPriority, TaskType, User
-from app.routers import admin, approvals, auth, dashboard, projects, tasks, users, workflow
-from app.services import workflow_service
+from app.routers import admin, approvals, auth, dashboard, projects, tasks, users
+from app.services import approval_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("prjhub")
@@ -19,11 +19,7 @@ logger = logging.getLogger("prjhub")
 def seed() -> None:
     db = SessionLocal()
     try:
-        workflow_service.seed_default_workflow(db)
-        from app.services import approval_service
-
         approval_service.seed_templates(db)
-        default_wf = workflow_service.default_workflow(db)
 
         admin_user = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
         if not admin_user:
@@ -46,7 +42,7 @@ def seed() -> None:
             db.flush()
             db.add(ProjectMember(project_id=demo.id, user_id=admin_user.id, role=ProjectRole.owner))
             db.add(Task(project_id=demo.id, number=1, title="浏览看板并创建你的第一个任务",
-                        type=TaskType.task, status=workflow_service.initial_key(default_wf),
+                        type=TaskType.task, status="todo",
                         priority=TaskPriority.medium, created_by=admin_user.id, task_order=1))
             db.commit()
             logger.info("seeded demo project DEMO")
@@ -76,7 +72,6 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(admin.router)
-    app.include_router(workflow.router)
     app.include_router(approvals.router)
     app.include_router(projects.router)
     app.include_router(tasks.router)
