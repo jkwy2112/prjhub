@@ -29,24 +29,26 @@ def dashboard(
     else:
         base = base.filter(Task.id < 0)  # no projects yet -> empty set
 
-    statuses = workflow_service.get_statuses(db)
-    done_keys = [s.key for s in statuses if s.is_done]
+    statuses = workflow_service.default_workflow(db).nodes
+    done = [s.key for s in statuses if s.is_done]
 
-    my_open = base.filter(Task.assignee_id == user.id, Task.status.notin_(done_keys)).count()
+    my_open = base.filter(Task.assignee_id == user.id, Task.status.notin_(done)).count()
     overdue = base.filter(
         Task.assignee_id == user.id,
-        Task.status.notin_(done_keys),
+        Task.status.notin_(done),
         Task.due_date.is_not(None),
         Task.due_date < func.now(),
     ).count()
-    done = base.filter(Task.assignee_id == user.id, Task.status.in_(done_keys)).count()
+    done_count = base.filter(Task.assignee_id == user.id, Task.status.in_(done)).count()
 
     status_rows = dict(base.with_entities(Task.status, func.count(Task.id)).group_by(Task.status).all())
+    distribution = {s.key: status_rows.get(s.key, 0) for s in statuses}
+    distribution["other"] = sum(v for k, v in status_rows.items() if k not in distribution)
     type_rows = dict(base.with_entities(Task.type, func.count(Task.id)).group_by(Task.type).all())
 
     my_recent = (
         db.query(Task)
-        .filter(Task.assignee_id == user.id, Task.status.notin_(done_keys))
+        .filter(Task.assignee_id == user.id, Task.status.notin_(done))
         .order_by(Task.updated_at.desc())
         .limit(10)
         .all()
@@ -66,8 +68,8 @@ def dashboard(
         project_count=project_count,
         my_open_task_count=my_open,
         overdue_task_count=overdue,
-        done_task_count=done,
-        status_distribution={s.key: status_rows.get(s.key, 0) for s in statuses},
+        done_task_count=done_count,
+        status_distribution=distribution,
         type_distribution={t.value: type_rows.get(t, 0) for t in TaskType},
         my_recent_tasks=my_recent,
         recent_activities=activities,

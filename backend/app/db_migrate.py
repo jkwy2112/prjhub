@@ -1,10 +1,5 @@
-"""Lightweight startup migrations for SQLite (no alembic dependency).
-
-Handles the enum->string change of tasks.status by rebuilding the table
-without the legacy CHECK constraint, preserving data and foreign keys.
-"""
+"""Lightweight startup migrations for SQLite (no alembic dependency)."""
 import logging
-import re
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -23,6 +18,7 @@ def _needs_tasks_status_rebuild(conn) -> bool:
 
 
 def rebuild_tasks_status_column(engine: Engine) -> None:
+    """tasks.status was an enum with CHECK constraint; rebuild as plain string."""
     if not engine.url.get_backend_name() == "sqlite":
         return
     with engine.connect() as conn:
@@ -48,5 +44,21 @@ def rebuild_tasks_status_column(engine: Engine) -> None:
         ))
         conn.execute(text("DROP TABLE _tasks_old"))
         conn.execute(text("PRAGMA foreign_keys=ON"))
-    logger.info("tasks table rebuilt, %s rows preserved",
-                engine.connect().execute(text("SELECT count(*) FROM tasks")).scalar())
+    logger.info("tasks table rebuilt")
+
+
+def ensure_project_workflow_column(engine: Engine) -> None:
+    """Add projects.workflow_id column if missing."""
+    if not engine.url.get_backend_name() == "sqlite":
+        return
+    with engine.connect() as conn:
+        cols = [row[1] for row in conn.execute(text("PRAGMA table_info(projects)")).fetchall()]
+    if cols and "workflow_id" not in cols:
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
+        logger.info("added projects.workflow_id column")
+
+
+def run_startup_migrations(engine: Engine) -> None:
+    rebuild_tasks_status_column(engine)
+    ensure_project_workflow_column(engine)

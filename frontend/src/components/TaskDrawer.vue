@@ -17,9 +17,9 @@
         <div class="meta-row">
           <span class="meta-label">状态</span>
           <el-select :model-value="task.status" size="small" style="width: 130px" @change="onStatusChange">
-            <el-option :value="task.status" :label="wf.labelOf(task.status) + ' (当前)'" disabled />
-            <el-option v-for="key in wf.nextKeysOf(task.status)" :key="key" :value="key"
-              :label="wf.labelOf(key)" />
+            <el-option :value="task.status" :label="labelOf(task.status) + ' (当前)'" disabled />
+            <el-option v-for="key in nextKeysOf(task.status)" :key="key" :value="key"
+              :label="labelOf(key)" />
           </el-select>
         </div>
         <div class="meta-row">
@@ -82,17 +82,19 @@ import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '../api'
 import { TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
-import { useWorkflowStore } from '../stores/workflow'
-
-const wf = useWorkflowStore()
 
 const props = defineProps({
   modelValue: Boolean,
   taskId: { type: Number, default: null },
   projectKey: { type: String, default: '' },
   members: { type: Array, default: () => [] },
+  statuses: { type: Array, default: () => [] },
 })
 const emit = defineEmits(['update:modelValue', 'changed'])
+
+const statusMap = computed(() => Object.fromEntries(props.statuses.map((s) => [s.key, s])))
+const labelOf = (k) => statusMap.value[k]?.name || k
+const nextKeysOf = (k) => statusMap.value[k]?.next_keys || []
 
 const visible = computed({
   get: () => props.modelValue,

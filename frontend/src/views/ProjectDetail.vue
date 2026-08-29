@@ -38,7 +38,7 @@
                 <el-tag size="small" :type="PRIORITY_META[t.priority].type">
                   {{ PRIORITY_META[t.priority].label }}
                 </el-tag>
-                <span v-if="t.due_date && !wf.isDone(t.status) && isOverdue(t)" class="overdue">已逾期</span>
+                <span v-if="t.due_date && !isDone(t.status) && isOverdue(t)" class="overdue">已逾期</span>
                 <span class="card-meta">
                   <el-icon><ChatDotRound /></el-icon>{{ t.comments_count }}
                   <el-avatar v-if="memberMap[t.assignee_id]" :size="20" style="margin-left: 6px; background: #409EFF">
@@ -79,8 +79,8 @@
           </el-table-column>
           <el-table-column label="状态" width="90">
             <template #default="{ row }">
-              <el-tag size="small" :color="wf.colorOf(row.status)" style="border: none; color: #fff">
-                {{ wf.labelOf(row.status) }}
+              <el-tag size="small" :color="colorOf(row.status)" style="border: none; color: #fff">
+                {{ labelOf(row.status) }}
               </el-tag>
             </template>
           </el-table-column>
@@ -189,6 +189,24 @@
         </el-card>
 
         <el-card shadow="never" style="max-width: 640px; margin-top: 16px">
+          <template #header><b>工作流</b></template>
+          <div class="wf-bind-row">
+            <el-select v-model="bindingWorkflow" style="width: 280px" placeholder="使用系统默认工作流"
+              @focus="loadWorkflowOptions">
+              <el-option :value="null" label="系统默认工作流" />
+              <el-option v-for="w in workflowOptions" :key="w.id" :value="w.id"
+                :label="`${w.name} (${w.node_count}个状态${w.is_default ? ', 默认' : ''})`" />
+            </el-select>
+            <el-button type="primary" :loading="binding" @click="bindWorkflow">切换工作流</el-button>
+          </div>
+          <p class="wf-bind-tip">
+            当前: <b>{{ projectWorkflow?.name }}</b>
+            ({{ wf.statuses.map((s) => s.name).join(' → ') }});
+            切换后不在新工作流中的任务会自动迁移到初始状态
+          </p>
+        </el-card>
+
+        <el-card shadow="never" style="max-width: 640px; margin-top: 16px">
           <template #header><b>Git 仓库</b></template>
           <template v-if="project.repo_path">
             <el-descriptions :column="1" border size="small">
@@ -219,7 +237,7 @@
     <TaskDialog v-model="taskDialog" :project-id="project.id" :members="members" :task="editingTask"
       @saved="loadTasks" />
     <TaskDrawer v-model="taskDrawer" :task-id="drawerTaskId" :project-key="project.key" :members="members"
-      @changed="loadTasks" />
+      :statuses="wf.statuses" @changed="loadTasks" />
   </div>
 </template>
 
@@ -230,11 +248,24 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search, FolderOpened, ChatDotRound } from '@element-plus/icons-vue'
 import api from '../api'
 import { TYPE_META, PRIORITY_META, ROLE_META, fmtDate, fmtDateTime } from '../constants'
-import { useWorkflowStore } from '../stores/workflow'
 import TaskDialog from '../components/TaskDialog.vue'
 import TaskDrawer from '../components/TaskDrawer.vue'
 
-const wf = useWorkflowStore()
+// project-bound workflow (fallback: system default from store)
+import { useWorkflowStore } from '../stores/workflow'
+
+const wfStore = useWorkflowStore()
+const projectWorkflow = ref(null) // {id,name,nodes,bound_workflow_id}
+const wf = {
+  get statuses() {
+    return projectWorkflow.value?.nodes || wfStore.statuses
+  },
+}
+const statusMap = computed(() => Object.fromEntries(wf.statuses.map((s) => [s.key, s])))
+const labelOf = (k) => statusMap.value[k]?.name || k
+const colorOf = (k) => statusMap.value[k]?.color || '#909399'
+const isDone = (k) => statusMap.value[k]?.is_done || false
+const initialKey = computed(() => wf.statuses.find((s) => s.is_initial)?.key || '')
 
 const route = useRoute()
 const router = useRouter()
@@ -269,7 +300,7 @@ const memberMap = computed(() => Object.fromEntries(members.value.map((m) => [m.
 const byStatus = computed(() => {
   const map = {}
   for (const s of wf.statuses) map[s.key] = []
-  const fallback = wf.initialKey
+  const fallback = initialKey.value
   for (const t of tasks.value) {
     if (map[t.status]) map[t.status].push(t)
     else if (map[fallback]) map[fallback].push(t)
@@ -290,7 +321,37 @@ const filteredTasks = computed(() =>
 )
 
 function isOverdue(t) {
-  return t.due_date && new Date(t.due_date) < new Date() && !wf.isDone(t.status)
+  return t.due_date && new Date(t.due_date) < new Date() && !isDone(t.status)
+}
+
+async function loadProjectWorkflow() {
+  const { data } = await api.get(`/projects/${projectId}/workflow`)
+  projectWorkflow.value = data
+  bindingWorkflow.value = data.bound_workflow_id ?? null
+}
+
+const workflowOptions = ref([])
+
+async function loadWorkflowOptions() {
+  const { data } = await api.get('/workflows')
+  workflowOptions.value = data
+}
+
+const bindingWorkflow = ref(null)
+const binding = ref(false)
+
+async function bindWorkflow() {
+  binding.value = true
+  try {
+    const { data } = await api.put(`/projects/${projectId}/workflow`,
+      { workflow_id: bindingWorkflow.value })
+    if (data.migrated) ElMessage.warning(`工作流已切换, ${data.migrated} 个任务迁移到初始状态`)
+    else ElMessage.success('工作流已切换')
+    await loadProjectWorkflow()
+    await loadTasks()
+  } catch { /* interceptor */ } finally {
+    binding.value = false
+  }
 }
 
 async function loadProject() {
@@ -404,7 +465,7 @@ async function deleteProject() {
 }
 
 onMounted(async () => {
-  await Promise.all([wf.fetch(), loadProject(), loadTasks(), loadMembers(), loadActivities()])
+  await Promise.all([wfStore.fetch(), loadProjectWorkflow(), loadProject(), loadTasks(), loadMembers(), loadActivities()])
   if (route.query.task) {
     drawerTaskId.value = Number(route.query.task)
     taskDrawer.value = true
@@ -421,6 +482,8 @@ watch(tab, (v) => {
 .pd-title { display: flex; align-items: center; gap: 12px; }
 .pd-title h2 { font-size: 20px; color: #303133; }
 .pd-key { color: #fff; font-weight: 700; font-size: 13px; padding: 4px 10px; border-radius: 8px; }
+.wf-bind-row { display: flex; gap: 10px; }
+.wf-bind-tip { color: #909399; font-size: 12px; margin-top: 10px; }
 .kanban { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 12px; }
 .kanban-col {
   flex: 1; min-width: 240px; background: #eceef1; border-radius: 10px;

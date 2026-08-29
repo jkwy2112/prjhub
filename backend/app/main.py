@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
-from app.db_migrate import rebuild_tasks_status_column
+from app.db_migrate import run_startup_migrations
 from app.models import AuthType, Project, ProjectMember, ProjectRole, Task, TaskPriority, TaskType, User
 from app.routers import admin, auth, dashboard, projects, tasks, users, workflow
 from app.services import workflow_service
@@ -19,7 +19,8 @@ logger = logging.getLogger("prjhub")
 def seed() -> None:
     db = SessionLocal()
     try:
-        workflow_service.seed_workflow(db)
+        workflow_service.seed_default_workflow(db)
+        default_wf = workflow_service.default_workflow(db)
 
         admin_user = db.query(User).filter(User.username == settings.ADMIN_USERNAME).first()
         if not admin_user:
@@ -42,7 +43,7 @@ def seed() -> None:
             db.flush()
             db.add(ProjectMember(project_id=demo.id, user_id=admin_user.id, role=ProjectRole.owner))
             db.add(Task(project_id=demo.id, number=1, title="浏览看板并创建你的第一个任务",
-                        type=TaskType.task, status=workflow_service.initial_key(db),
+                        type=TaskType.task, status=workflow_service.initial_key(default_wf),
                         priority=TaskPriority.medium, created_by=admin_user.id, task_order=1))
             db.commit()
             logger.info("seeded demo project DEMO")
@@ -52,7 +53,7 @@ def seed() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    rebuild_tasks_status_column(engine)
+    run_startup_migrations(engine)
     Base.metadata.create_all(bind=engine)
     seed()
     yield

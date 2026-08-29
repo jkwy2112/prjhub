@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Enum,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -54,18 +55,47 @@ class TaskPriority(str, enum.Enum):
     urgent = "urgent"
 
 
-class WorkflowStatus(Base):
-    """Customizable task workflow: statuses + transition rules (system-wide, admin-managed)."""
-    __tablename__ = "workflow_statuses"
+class Workflow(Base):
+    """Workflow definition: statuses(nodes) + transitions, bindable to projects."""
+    __tablename__ = "workflows"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    key: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    description: Mapped[str] = mapped_column(String(255), default="")
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    nodes: Mapped[List["WorkflowNode"]] = relationship(
+        back_populates="workflow", cascade="all, delete-orphan",
+        order_by="WorkflowNode.sort_order", collection_class=list,
+    )
+
+
+class WorkflowNode(Base):
+    """Status node with canvas position (x/y) and transition edges + handler rules."""
+    __tablename__ = "workflow_nodes"
+    __table_args__ = (UniqueConstraint("workflow_id", "key", name="uq_workflow_node_key"),)
+
+    HANDLER_ANY = "any"            # 任何人
+    HANDLER_ASSIGNEE = "assignee"  # 任务负责人
+    HANDLER_ADMINS = "admins"      # 项目所有者/管理员
+    HANDLER_MEMBERS = "members"    # 指定成员
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    workflow_id: Mapped[int] = mapped_column(ForeignKey("workflows.id", ondelete="CASCADE"), index=True)
+    key: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(32))
     color: Mapped[str] = mapped_column(String(16), default="#409EFF")
+    x: Mapped[float] = mapped_column(Float, default=0)   # canvas position
+    y: Mapped[float] = mapped_column(Float, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_initial: Mapped[bool] = mapped_column(Boolean, default=False)
     is_done: Mapped[bool] = mapped_column(Boolean, default=False)
-    next_keys: Mapped[list] = mapped_column(JSON, default=list)  # keys of allowed next statuses
+    next_keys: Mapped[list] = mapped_column(JSON, default=list)
+    handler_type: Mapped[str] = mapped_column(String(16), default=HANDLER_ANY)
+    handler_user_ids: Mapped[list] = mapped_column(JSON, default=list)
+
+    workflow: Mapped[Workflow] = relationship(back_populates="nodes")
 
 
 class SystemConfig(Base):
@@ -108,6 +138,8 @@ class Project(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     color: Mapped[str] = mapped_column(String(16), default="#409EFF")
     repo_path: Mapped[str] = mapped_column(String(512), default="")  # auto-initialized git repo
+    workflow_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workflows.id", ondelete="SET NULL"),
+                                                       nullable=True)  # null -> default workflow
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
