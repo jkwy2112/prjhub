@@ -29,22 +29,25 @@
 
 ## 快速开始
 
-要求: Python 3.9+, Node.js 18+, git
+要求: Python 3.9+, Node.js 18+, git; 数据库使用 PostgreSQL (Docker 一键启动)
 
 ```bash
+# 0) 数据库
+docker compose up -d db            # PostgreSQL 16, 端口 5432, 库 prjhub
+
 # 1) 后端
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env          # 按需修改配置
+cp .env.example .env               # 默认连接本机 Docker PostgreSQL
 .venv/bin/uvicorn app.main:app --reload --port 8000
 
 # 2) 前端 (另开终端)
 cd frontend
 npm install
-npm run dev                   # http://localhost:5173  (/api 已代理到 8000)
+npm run dev                        # http://localhost:5173  (/api 已代理到 8000)
 ```
 
-首次启动自动创建管理员 `admin / admin123` 和示例项目 DEMO ( 生产环境务必修改 `.env` 中的 `ADMIN_PASSWORD` 与 `SECRET_KEY` )。
+首次启动自动创建管理员 `admin / admin123` 和示例项目 DEMO ( 生产环境务必修改 `.env` 中的 `ADMIN_PASSWORD` 与 `SECRET_KEY` )。也可将 `DATABASE_URL` 改回 SQLite ( `sqlite:///./data/prjhub.db` ) 零依赖运行。
 
 ## 认证配置
 
@@ -103,8 +106,11 @@ PUT  /admin/users/{id}       编辑/禁用/重置密码/授权超管( 超管 )
 ## 测试
 
 ```bash
-cd backend && .venv/bin/python -m pytest tests/ -q   # 16 个用例: 认证/权限/工作流/Git/看板
-cd frontend && npm run build                          # 构建校验
+cd backend && .venv/bin/python -m pytest tests/ -q      # 36 个用例 (默认 SQLite)
+# 在 PostgreSQL 上跑同一套测试:
+TEST_DATABASE_URL=postgresql+psycopg2://prjhub:prjhub_secret@127.0.0.1:5432/prjhub_test \
+  .venv/bin/python -m pytest tests/ -q
+cd frontend && npm run build                            # 构建校验
 ```
 
 ## 目录结构

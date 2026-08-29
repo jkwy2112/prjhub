@@ -4,12 +4,33 @@ import tempfile
 from pathlib import Path
 
 # Isolated test environment: must be configured BEFORE importing the app.
-_TMP = tempfile.mkdtemp(prefix="prjhub-test-")
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.db"
-os.environ["REPOS_DIR"] = f"{_TMP}/repos"
-os.environ["SECRET_KEY"] = "test-secret-key"
-os.environ["ADMIN_USERNAME"] = "admin"
-os.environ["ADMIN_PASSWORD"] = "admin123"
+# Set TEST_DATABASE_URL to run the suite against PostgreSQL, e.g.
+#   TEST_DATABASE_URL=postgresql+psycopg2://prjhub:prjhub_secret@127.0.0.1:5432/prjhub_test pytest -q
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "")
+
+if TEST_DB_URL:
+    os.environ["DATABASE_URL"] = TEST_DB_URL
+    # clean schema for a repeatable PG run
+    from sqlalchemy import create_engine, text
+
+    _pg_engine = create_engine(TEST_DB_URL)
+    with _pg_engine.begin() as _conn:
+        _conn.execute(text("DROP SCHEMA public CASCADE"))
+        _conn.execute(text("CREATE SCHEMA public"))
+    _pg_engine.dispose()
+else:
+    _TMP = tempfile.mkdtemp(prefix="prjhub-test-")
+    os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.db"
+    os.environ["REPOS_DIR"] = f"{_TMP}/repos"
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("ADMIN_USERNAME", "admin")
+os.environ.setdefault("ADMIN_PASSWORD", "admin123")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
