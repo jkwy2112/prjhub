@@ -40,7 +40,7 @@
       @row-click="openDetail" row-class-name="clickable">
       <el-table-column label="审批编号" width="150">
         <template #default="{ row }">
-          <span class="tno">{{ row.ticket_no || String(row.id).padStart(14, '0') }}</span>
+          <span class="tno">{{ fmtTicketNo(row.ticket_no) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="标题" min-width="200">
@@ -216,7 +216,7 @@
         <div class="tk-info">
           <div class="tk-row">
             <span class="tk-k">审批编号</span>
-            <span class="tk-v mono">{{ detail.ticket_no || String(detail.id).padStart(14, '0') }}
+            <span class="tk-v mono">{{ fmtTicketNo(detail.ticket_no) }}
               <el-icon class="tk-copy" title="复制" @click="copyNo(detail.ticket_no)"><CopyDocument /></el-icon>
             </span>
           </div>
@@ -236,7 +236,6 @@
           </div>
         </div>
         <div v-if="detail.form_items?.length" class="tk-form">
-          <div class="tk-form-title">表单内容<span v-if="permHiddenCount" class="tk-form-tip">（{{ permHiddenCount }} 个字段按权限隐藏）</span></div>
           <div class="tk-form-grid">
             <div v-for="f in gridFormItems" :key="f.id" class="tk-cell">
               <span class="tk-cell-k">{{ f.title }}</span>
@@ -404,6 +403,11 @@ watch(() => detail.value?.submitted_by, async (uid) => {
   } catch { /* ignore */ }
 }, { immediate: true })
 
+function fmtTicketNo(no) {
+  if (!no || no.length !== 14) return no || '-'
+  return `${no.slice(0, 4)}-${no.slice(4, 6)}-${no.slice(6, 8)} ${no.slice(8, 10)}:${no.slice(10, 12)}:${no.slice(12, 14)}`
+}
+
 function fmtSubmit(v) {
   if (!v) return '-'
   const d = new Date(v)
@@ -487,7 +491,7 @@ function printTicket() {
     td,th{border:1px solid #dcdfe6;padding:6px 10px;font-size:13px;text-align:left}
     th{background:#f5f7fa}</style></head><body>
     <h2>${(() => d.title.includes('的') ? d.title : `${userMap[d.submitted_by] || d.submitted_by}的${d.title}`)()}</h2>
-    <div class="no">审批编号: ${d.ticket_no || String(d.id).padStart(14, '0')}</div>
+    <div class="no">审批编号: ${fmtTicketNo(d.ticket_no)}</div>
     <div class="meta">提交时间: ${fmtSubmit(d.created_at)} | 所在部门: ${submitterDept.value} | 状态: ${statusMeta(d.status).label}</div>
     ${formRows ? `<table><tr><th style="width:140px">表单字段</th><th>内容</th></tr>${formRows}</table>` : ''}
     <table><tr><th>环节</th><th>处理人</th><th>动作</th><th>意见</th><th>时间</th></tr>${rows}</table>
@@ -537,7 +541,7 @@ async function load() {
       try {
         const { data } = await api.get('/users', { params: { q: String(id) } })
         const hit = data.find((u) => u.id === id)
-        if (hit) userMap[id] = hit.name || hit.username
+        if (hit) userMap[id] = hit.username
       } catch { /* ignore */ }
     }))
   } finally {
@@ -667,10 +671,6 @@ onMounted(load)
 /* ===== form content ===== */
 .tk-form { background: var(--ph-fill-blank, #fff); border: 1px solid var(--ph-border-lighter);
   border-radius: var(--ph-radius-lg); margin-bottom: var(--ph-space-4); overflow: hidden; }
-.tk-form-title { font-weight: 600; font-size: var(--ph-font-sm); color: var(--ph-text-primary);
-  padding: var(--ph-space-3) var(--ph-space-4); border-bottom: 1px solid var(--ph-border-lighter);
-  background: var(--ph-fill-light); }
-.tk-form-tip { font-weight: 400; color: var(--ph-text-disabled); font-size: var(--ph-font-xs); }
 .tk-form-grid { display: flex; flex-direction: column; }
 .tk-cell { display: flex; padding: 9px var(--ph-space-4); border-bottom: 1px dashed var(--ph-border-lighter);
   align-items: baseline; }
