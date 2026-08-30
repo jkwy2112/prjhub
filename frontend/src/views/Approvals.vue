@@ -102,6 +102,33 @@
                 remote :remote-method="searchUsers" clearable placeholder="搜索并选择人员" style="width: 100%">
                 <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
               </el-select>
+              <el-date-picker v-else-if="f.name === 'DateTimeRange'" v-model="formValues[f.id]"
+                type="datetimerange" value-format="YYYY-MM-DD HH:mm" start-placeholder="开始"
+                end-placeholder="结束" style="width: 100%" />
+              <el-upload v-else-if="f.name === 'ImageUpload' || f.name === 'FileUpload'"
+                :file-list="(formValues[f.id] || []).map((u) => ({ name: u.split('/').pop(), url: u }))"
+                :http-request="(opt) => doUpload(f, opt)" list-type="picture-card"
+                :on-remove="(file) => { const arr = formValues[f.id]; const i = arr.indexOf(file.url); if (i >= 0) arr.splice(i, 1) }">
+                <el-icon><Plus /></el-icon>
+              </el-upload>
+              <table v-else-if="f.name === 'TableList'" class="fr-table">
+                <thead><tr><th v-for="col in f.props.columns || []" :key="col.id">{{ col.title }}</th><th style="width: 40px"></th></tr></thead>
+                <tbody>
+                  <tr v-for="(row, ri) in formValues[f.id] || []" :key="ri">
+                    <td v-for="col in f.props.columns || []" :key="col.id">
+                      <el-input v-if="col.name === 'TextInput'" v-model="row[col.id]" size="small" />
+                      <el-input-number v-else-if="col.name === 'NumberInput'" v-model="row[col.id]" size="small"
+                        controls-position="right" style="width: 100%" />
+                      <el-input v-else v-model="row[col.id]" size="small" />
+                    </td>
+                    <td><el-button text type="danger" size="small"
+                      @click="formValues[f.id].splice(ri, 1)"><el-icon><Close /></el-icon></el-button></td>
+                  </tr>
+                </tbody>
+              </table>
+              <el-button v-else-if="f.name === 'TableList'" text size="small"
+                @click="(formValues[f.id] = formValues[f.id] || []).push(
+                  Object.fromEntries((f.props.columns || []).map((c) => [c.id, c.name === 'NumberInput' ? 0 : ''])))">加一行</el-button>
               <el-alert v-else-if="f.name === 'Description'" type="info" :closable="false" :title="f.props?.content" />
             </el-form-item>
           </template>
@@ -340,6 +367,15 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function doUpload(field, opt) {
+  const fd = new FormData()
+  fd.append('file', opt.file)
+  const { data } = await api.post('/uploads', fd)
+  if (!Array.isArray(formValues[field.id])) formValues[field.id] = []
+  formValues[field.id].push(data.url)
+  opt.onSuccess(data)
 }
 
 async function searchUsers(q) {

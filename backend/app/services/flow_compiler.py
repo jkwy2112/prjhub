@@ -193,43 +193,57 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
     users = props.get("users") or []
     mode = props.get("mode", "any")
     count = int(props.get("count") or 0)
-    nobody = props.get("nobody", "to_admin")
+    nobody = props.get("nobody") or {"handler": "to_admin"}
+    if isinstance(nobody, str):  # legacy simple form
+        nobody = {"handler": nobody}
     form_field = props.get("formField") or ""
     form_perms = props.get("formPerms") or {}
     timeout = props.get("timeout") or {}
 
-    if assignee_type not in ("users", "runtime", "form"):
+    if assignee_type not in ("users", "runtime", "form", "self"):
         raise FlowCompileError(f"审批节点「{name}」审批人类型不合法")
     if assignee_type == "users" and not users:
         raise FlowCompileError(f"审批节点「{name}」未指定审批成员")
     if assignee_type == "form" and not form_field:
         raise FlowCompileError(f"审批节点「{name}」未选择表单联系人字段")
-    if mode not in ("any", "all", "count"):
+    if mode not in ("any", "all", "count", "next"):
         raise FlowCompileError(f"审批节点「{name}」签核模式不合法")
     if mode == "count" and count < 1:
         raise FlowCompileError(f"审批节点「{name}」票签数需 ≥ 1")
-    if nobody not in ("to_admin", "auto_pass", "auto_reject"):
+    handler = nobody.get("handler", "to_admin")
+    if handler not in ("to_admin", "auto_pass", "auto_reject", "to_user"):
         raise FlowCompileError(f"审批节点「{name}」审批人为空策略不合法")
-    if timeout.get("enabled") and (int(timeout.get("value") or 0) < 1
-                                    or timeout.get("unit") not in ("H", "D")):
-        raise FlowCompileError(f"审批节点「{name}」超时设置不合法 (单位: 小时/天, 数值 ≥ 1)")
+    if handler == "to_user" and not (nobody.get("users") or []):
+        raise FlowCompileError(f"审批节点「{name}」转交人员未指定")
+    timeout = dict(timeout)  # avoid mutating the caller's tree
+    if timeout.get("enabled"):
+        if int(timeout.get("value") or 0) < 1 or timeout.get("unit") not in ("H", "D"):
+            raise FlowCompileError(f"审批节点「{name}」超时设置不合法 (单位: 小时/天, 数值 ≥ 1)")
+        timeout.setdefault("handler", "NOTIFY")
+        if timeout.get("handler") not in ("NOTIFY", "PASS", "REFUSE"):
+            raise FlowCompileError(f"审批节点「{name}」超时动作不合法")
 
+    # sequential countersign (wflow NEXT) only makes sense for multi-instance nodes
+    sequential = mode == "next" and (len(users) > 1 or assignee_type in ("runtime", "form"))
+    effective_mode = "all" if mode == "next" else mode
     multi = len(users) > 1 or assignee_type in ("runtime", "form")
     if multi:
         if assignee_type == "users":
             cardinality = str(len(users))
-            pass_n = 1 if mode == "any" else (len(users) if mode == "all" else min(count, len(users)))
+            pass_n = (1 if effective_mode == "any"
+                      else (len(users) if effective_mode == "all" else min(count, len(users))))
             completion = f"completed_count >= {pass_n} or rejected"
         else:
             cardinality = f"assignee_total_{tid}"
-            if mode == "any":
+            if effective_mode == "any":
                 completion = "completed_count >= 1 or rejected"
-            elif mode == "all":
+            elif effective_mode == "all":
                 completion = f"completed_count >= assignee_total_{tid} or rejected"
             else:
                 completion = f"completed_count >= pass_{tid} or rejected"
         g.element(tid, "bpmn:userTask", name=name)
-        g.elements[tid]["mi"] = {"cardinality": cardinality, "completion": completion}
+        g.elements[tid]["mi"] = {"cardinality": cardinality, "completion": completion,
+                                 "sequential": sequential}
     else:
         g.element(tid, "bpmn:userTask", name=name)
 
@@ -250,13 +264,23 @@ def _compile_approval(g: _Graph, node: dict, meta: dict, prev_approval: Optional
     gw = g.gw_id("gw_rej")
     g.element(gw, "bpmn:exclusiveGateway", gatewayDirection="Diverging")
     g.edge(tid, gw)
-    refuse = (node.get("props") or {}).get("refuse", "TO_END")
-    if refuse not in ("TO_END", "TO_BEFORE"):
+    props = node.get("props") or {}
+    refuse = props.get("refuse", "TO_END")
+    refuse_target = props.get("refuseTarget") or ""
+    if refuse not in ("TO_END", "TO_BEFORE", "TO_NODE"):
         raise FlowCompileError(f"审批节点「{meta[tid]['name']}」驳回规则不合法")
     if refuse == "TO_BEFORE" and prev_approval:
         g.edge(gw, prev_approval, condition="rejected", name="驳回到上一节点")
         meta[tid]["refuse"] = "TO_BEFORE"
         meta[tid]["returnTo"] = prev_approval
+    elif refuse == "TO_NODE":
+        if not refuse_target or refuse_target not in g.elements:
+            raise FlowCompileError(f"审批节点「{meta[tid]['name']}」驳回到指定节点: 请选择有效目标")
+        if refuse_target == tid:
+            raise FlowCompileError(f"审批节点「{meta[tid]['name']}」不能驳回到自身")
+        g.edge(gw, refuse_target, condition="rejected", name="驳回到指定节点")
+        meta[tid]["refuse"] = "TO_NODE"
+        meta[tid]["returnTo"] = refuse_target
     else:
         g.edge(gw, END_REJECTED, condition="rejected", name="驳回")
     return tid, gw, tid
@@ -367,8 +391,9 @@ def _serialize(g: _Graph, process_id: str) -> str:
         for ref in outgoing.get(eid, []):
             frag += f"<bpmn:outgoing>{ref}</bpmn:outgoing>"
         if el.get("mi"):
+            seq_attr = ' isSequential="true"' if el["mi"].get("sequential") else ' isSequential="false"'
             frag += (
-                '<bpmn:multiInstanceLoopCharacteristics isSequential="false">'
+                f"<bpmn:multiInstanceLoopCharacteristics{seq_attr}>"
                 f"<bpmn:loopCardinality>{escape(el['mi']['cardinality'])}</bpmn:loopCardinality>"
                 f"<bpmn:completionCondition>{escape(el['mi']['completion'])}</bpmn:completionCondition>"
                 "</bpmn:multiInstanceLoopCharacteristics>"

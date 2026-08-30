@@ -69,6 +69,21 @@
           <el-form-item v-if="selected.name === 'Description'" label="内容">
             <el-input v-model="selected.props.content" type="textarea" :rows="3" />
           </el-form-item>
+          <template v-if="selected.name === 'TableList'">
+            <el-divider style="margin: 8px 0">明细列设置</el-divider>
+            <div v-for="(col, i) in selected.props.columns || []" :key="i" class="fd-col-row">
+              <el-input v-model="col.title" size="small" placeholder="列标题" style="width: 100px" />
+              <el-select v-model="col.name" size="small" style="width: 100px">
+                <el-option value="TextInput" label="文本" />
+                <el-option value="NumberInput" label="数字" />
+              </el-select>
+              <el-button text type="danger" size="small"
+                @click="selected.props.columns.splice(i, 1)"><el-icon><Close /></el-icon></el-button>
+            </div>
+            <el-button text size="small" :icon="Plus"
+              @click="(selected.props.columns = selected.props.columns || []).push(
+                { id: 'c_' + Math.random().toString(36).slice(2, 5), title: '新列', name: 'TextInput' })">加列</el-button>
+          </template>
         </el-form>
         <el-divider />
         <h5>填写预览</h5>
@@ -80,7 +95,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { Plus, Close, Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User } from '@element-plus/icons-vue'
+import { Plus, Close, Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User, Timer, Picture, Paperclip, Grid } from '@element-plus/icons-vue'
 import { FORM_COMPONENTS, newFormItem } from './formComponents'
 import FormRender from './FormRender.vue'
 
@@ -91,12 +106,13 @@ const emit = defineEmits(['changed'])
 
 const selected = ref(null)
 
-const ICONS = { Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User }
+const ICONS = { Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User, Timer, Picture, Paperclip, Grid }
 const iconOf = (name) => ICONS[name] || Edit
 
 const TYPE_LABELS = {
   TextInput: '单行文本', TextareaInput: '多行文本', NumberInput: '数字', AmountInput: '金额',
-  SelectInput: '单选', MultipleSelect: '多选', DateTime: '日期', UserPicker: '人员', Description: '说明',
+  SelectInput: '单选', MultipleSelect: '多选', DateTime: '日期', DateTimeRange: '日期区间',
+  UserPicker: '人员', ImageUpload: '图片', FileUpload: '附件', TableList: '明细表', Description: '说明',
 }
 const typeLabel = (item) => TYPE_LABELS[item.name] || item.name
 const typeTag = (item) => ({ Number: 'warning', Array: 'success', Date: 'info' }[item.valueType] || '')
@@ -147,4 +163,5 @@ function remove(i) {
 .fd-props { width: 280px; flex-shrink: 0; background: #fff; border-radius: 8px; padding: 12px;
   overflow: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .fd-options { width: 100%; }
+.fd-col-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
 </style>

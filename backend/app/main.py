@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,7 @@ from app.core.security import hash_password
 from app.db import Base, SessionLocal, engine
 from app.db_migrate import run_startup_migrations
 from app.models import AuthType, Project, ProjectMember, ProjectRole, Task, TaskPriority, TaskType, User
-from app.routers import admin, approvals, auth, dashboard, projects, tasks, users
+from app.routers import admin, approvals, auth, dashboard, projects, tasks, uploads, users
 from app.services import approval_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -99,6 +100,12 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(tasks.router)
     app.include_router(dashboard.router)
+    app.include_router(uploads.router)
+
+    from fastapi.staticfiles import StaticFiles
+
+    Path("uploads").mkdir(exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
     @app.get("/health", tags=["meta"])
     def health():

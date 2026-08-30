@@ -81,6 +81,7 @@
                   <el-radio-button value="users">固定成员</el-radio-button>
                   <el-radio-button value="runtime">发起时指定</el-radio-button>
                   <el-radio-button value="form">表单联系人</el-radio-button>
+                  <el-radio-button value="self">发起人自己</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
@@ -111,16 +112,32 @@
                 <el-input-number v-model="selected.props.count" :min="1" />
               </el-form-item>
               <el-form-item label="审批人为空">
-                <el-select v-model="selected.props.nobody" style="width: 100%">
+                <el-select :model-value="nobodyHandler" @update:model-value="(v) => setNobody(selected, v)"
+                  style="width: 100%">
                   <el-option value="to_admin" label="转交系统管理员" />
                   <el-option value="auto_pass" label="自动通过" />
                   <el-option value="auto_reject" label="自动驳回" />
+                  <el-option value="to_user" label="转交指定人员" />
                 </el-select>
               </el-form-item>
               <el-form-item label="驳回规则">
                 <el-select v-model="selected.props.refuse" style="width: 100%">
                   <el-option value="TO_END" label="驳回即结束流程" />
                   <el-option value="TO_BEFORE" label="退回上一审批节点重审" />
+                  <el-option value="TO_NODE" label="驳回到指定节点" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="selected.props.refuse === 'TO_NODE'" label="目标节点">
+                <el-select v-model="selected.props.refuseTarget" style="width: 100%"
+                  placeholder="选择审批节点">
+                  <el-option v-for="n in approvalNodeOptions" :key="n.bpmnId" :value="n.bpmnId"
+                    :label="n.name" :disabled="n.bpmnId === selected.bpmnId" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-if="nobodyHandler === 'to_user'" label="转交人员">
+                <el-select v-model="selected.props.nobody.users" multiple filterable remote
+                  :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
+                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
                 </el-select>
               </el-form-item>
               <el-form-item label="超时催办">
@@ -131,6 +148,11 @@
                     style="margin-left: 8px; width: 90px" />
                   <el-select v-model="selected.props.timeout.unit" size="small" style="width: 70px">
                     <el-option value="H" label="小时" /><el-option value="D" label="天" />
+                  </el-select>
+                  <el-select v-model="selected.props.timeout.handler" size="small" style="width: 110px">
+                    <el-option value="NOTIFY" label="提醒" />
+                    <el-option value="PASS" label="自动通过" />
+                    <el-option value="REFUSE" label="自动驳回" />
                   </el-select>
                 </template>
               </el-form-item>
@@ -180,6 +202,7 @@
                   <el-radio-button value="users">固定成员</el-radio-button>
                   <el-radio-button value="runtime">发起时指定</el-radio-button>
                   <el-radio-button value="form">表单联系人</el-radio-button>
+                  <el-radio-button value="self">发起人自己</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
@@ -317,6 +340,28 @@ function toggleTimeout(node, enabled) {
     if (!node.props.timeout.value) node.props.timeout.value = 24
   }
 }
+const nobodyHandler = computed(() => {
+  const n = selected.value?.props?.nobody
+  return (typeof n === 'object' && n) ? (n.handler || 'to_admin') : (n || 'to_admin')
+})
+function setNobody(node, v) {
+  node.props.nobody = { handler: v, users: [] }
+}
+
+const approvalNodeOptions = computed(() => {
+  const out = []
+  const walk = (node) => {
+    if (!node) return
+    if (node.type === 'APPROVAL' && node.bpmnId && node !== selected.value) {
+      out.push({ bpmnId: node.bpmnId, name: node.name })
+    }
+    ;(node.branches || []).forEach((b) => walk(b.childNode))
+    walk(node.childNode)
+  }
+  walk(tree.childNode)
+  return out
+})
+
 function permOf(node, fid) {
   return node.props?.formPerms?.[fid] || 'visible'
 }
@@ -371,7 +416,9 @@ function newNode(type) {
     return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
   }
   if (type === 'APPROVAL') {
-    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2, nobody: 'to_admin', refuse: 'TO_END' }, childNode: null }
+    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2,
+      nobody: { handler: 'to_admin' }, refuse: 'TO_END', refuseTarget: '', formField: '',
+      formPerms: {}, timeout: { enabled: false, unit: 'H', value: 24, handler: 'NOTIFY' } }, childNode: null }
   }
   if (type === 'CONDITIONS') {
     return {

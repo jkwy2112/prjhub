@@ -4,7 +4,7 @@ from datetime import timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import ApprovalTask, ApprovalTicket, User, utcnow
+from app.models import ApprovalTask, ApprovalTicket, ProcessDefinition, User, utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,31 @@ def remind_overdue() -> int:
         )
         count = 0
         for task, ticket, user in rows:
+            meta = ((db.get(ProcessDefinition, ticket.definition_id).node_meta or {})
+                    if db.get(ProcessDefinition, ticket.definition_id) else {}).get(task.node_id) or {}
+            handler = ((meta.get("timeout") or {}).get("handler") or "NOTIFY")
+
+            if handler in ("PASS", "REFUSE"):
+                # wflow semantic: auto approve/reject on timeout
+                admin = db.query(User).filter(User.is_superuser.is_(True)).first()
+                if admin:
+                    from app.services import approval_service
+
+                    db.refresh(task)
+                    if task.status == "pending" and ticket.status == "running":
+                        approval_service.complete_task(
+                            db, task, admin,
+                            "approve" if handler == "PASS" else "reject",
+                            "审批超时, 系统自动处理")
+                        count += 1
+                        if user:
+                            send_wecom_text(
+                                db, user,
+                                f"【审批超时】「{ticket.title}」的「{task.node_name}」超时未处理, 系统已自动"
+                                f"{'通过' if handler == 'PASS' else '驳回'}")
+                continue
+
+            # NOTIFY (default): remind, throttled
             if _aware(task.reminded_at) and _aware(task.reminded_at) > threshold:
                 continue
             task.reminded_at = now

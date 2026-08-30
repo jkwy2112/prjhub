@@ -4,6 +4,7 @@ export const VALUE_TYPES = {
   Number: '数字',
   Array: '多选',
   Date: '日期',
+  DateRange: '日期区间',
   User: '人员',
 }
 
@@ -15,7 +16,11 @@ export const FORM_COMPONENTS = [
   { name: 'SelectInput', title: '单选', valueType: 'String', icon: 'CircleCheck' },
   { name: 'MultipleSelect', title: '多选', valueType: 'Array', icon: 'Finished' },
   { name: 'DateTime', title: '日期', valueType: 'Date', icon: 'Calendar' },
+  { name: 'DateTimeRange', title: '日期区间', valueType: 'DateRange', icon: 'Timer' },
   { name: 'UserPicker', title: '人员选择', valueType: 'User', icon: 'User' },
+  { name: 'ImageUpload', title: '图片上传', valueType: 'Array', icon: 'Picture' },
+  { name: 'FileUpload', title: '附件上传', valueType: 'Array', icon: 'Paperclip' },
+  { name: 'TableList', title: '明细表格', valueType: 'Array', icon: 'Grid' },
   { name: 'Description', title: '说明文字', valueType: null, icon: 'Warning' },
 ]
 
@@ -37,6 +42,15 @@ export function newFormItem(name) {
   if (name === 'UserPicker') {
     item.props.multiple = false
   }
+  if (name === 'ImageUpload' || name === 'FileUpload') {
+    item.props.maxNumber = 5
+  }
+  if (name === 'TableList') {
+    item.props.columns = [
+      { id: `c_${Math.random().toString(36).slice(2, 5)}`, title: '名称', name: 'TextInput' },
+      { id: `c_${Math.random().toString(36).slice(2, 5)}`, title: '数量', name: 'NumberInput' },
+    ]
+  }
   return item
 }
 
@@ -50,6 +64,7 @@ export const COMPARE_BY_TYPE = {
     { value: '==', label: '=' }, { value: 'in', label: '属于' },
   ],
   Date: [{ value: '==', label: '于' }],
+  DateRange: [{ value: '==', label: '于' }],
   User: [{ value: '==', label: '是' }],
   Array: [{ value: 'in', label: '包含任一' }],
 }

@@ -120,6 +120,8 @@ def _resolve_assignees(db: Session, ticket: ApprovalTicket, node_id: str) -> lis
         elif meta.get("assigneeType") == "form":
             value = (ticket.variables or {}).get(meta.get("formField")) or []
             users = list(value) if isinstance(value, list) else [value]
+        elif meta.get("assigneeType") == "self":
+            users = [ticket.submitted_by]
         else:
             users = list(meta.get("users") or [])
     else:
@@ -131,10 +133,27 @@ def _resolve_assignees(db: Session, ticket: ApprovalTicket, node_id: str) -> lis
             value = variables.get(f"approver_{short}", variables.get(f"approver_{node_id}"))
             users = [value] if value else []
     if not users:
-        return []
+        # nobody policy: hand over to configured users when fixed assignees are all gone
+        if meta:
+            nobody = meta.get("nobody") or {}
+            handler = nobody.get("handler") if isinstance(nobody, dict) else None
+            if handler == "to_user":
+                users = list(nobody.get("users") or [])
+        if not users:
+            return []
     rows = db.query(User.id).filter(User.id.in_(users), User.is_active.is_(True)).all()
     valid = {r[0] for r in rows}
-    return [u for u in users if u in valid]
+    result = [u for u in users if u in valid]
+    if not result and meta:
+        # all configured assignees invalid (deleted/disabled) -> nobody to_user fallback
+        nobody = meta.get("nobody") or {}
+        handler = nobody.get("handler") if isinstance(nobody, dict) else None
+        if handler == "to_user":
+            users2 = list(nobody.get("users") or [])
+            rows2 = db.query(User.id).filter(User.id.in_(users2), User.is_active.is_(True)).all()
+            valid2 = {r[0] for r in rows2}
+            result = [u for u in users2 if u in valid2]
+    return result
 
 
 def _start_variables(definition: ProcessDefinition, ticket_vars: dict) -> dict:
@@ -207,9 +226,20 @@ def _advance_automatic(db: Session, ticket: ApprovalTicket, wf, definition) -> N
                 break
             if meta.get("type") == "APPROVAL" and meta.get("assigneeType") == "users":
                 if not _resolve_assignees(db, ticket, et.node_id):
-                    policy = meta.get("nobody", "to_admin")
+                    nobody = meta.get("nobody") or {}
+                    policy = (nobody.get("handler", "to_admin")
+                              if isinstance(nobody, dict) else str(nobody))
                     if policy == "to_admin":
                         continue  # leave as pending; superusers can act
+                    if policy == "to_user":
+                        # hand over to configured users (keep pending, reassigned)
+                        meta_all2 = meta
+                        et_meta_users = nobody.get("users") or []
+                        valid = [u for u in et_meta_users
+                                 if db.query(User.id).filter(User.id == u).first()]
+                        if valid:
+                            pass  # handled by sync below via _resolve_assignees fallback
+                        continue
                     action = "approve" if policy == "auto_pass" else "reject"
                     db.add(ApprovalTask(
                         ticket_id=ticket.id, engine_task_id=et.engine_task_id,
@@ -269,25 +299,24 @@ def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
         if row.status == "pending" and row.engine_task_id not in ready_ids:
             row.status = "cancelled"  # e.g. terminated by or-sign completion / rejection shortcut
 
-    # assignee allocation per node (only currently-pending rows block re-allocation,
-    # so a TO_BEFORE bounce can hand the same person their re-approval todo)
-    allocated: "dict[str, list[int]]" = {}
-    for row in sorted(rows, key=lambda r: r.engine_task_id):
-        if row.assignee_id is not None and row.status == "pending":
-            allocated.setdefault(row.node_id, []).append(row.assignee_id)
+    # assignee allocation per node: instance ordinal = number of rows already created
+    # for that node (stable order; works for sequential bounce and parallel batches)
+    allocated: "dict[str, int]" = {}
+    for row in rows:
+        key = row.node_id
+        allocated[key] = allocated.get(key, 0) + 1
 
     for et in sorted(ready, key=lambda t: t.engine_task_id):
         if et.engine_task_id in by_engine_id:
             continue
         candidates = _resolve_assignees(db, ticket, et.node_id)
-        used = allocated.setdefault(et.node_id, [])
+        idx = allocated.get(et.node_id, 0)
+        allocated[et.node_id] = idx + 1
         assignee = None
-        for cand in candidates:
-            if cand not in used:
-                assignee = cand
-                break
-        if assignee is not None:
-            used.append(assignee)
+        if candidates:
+            assignee = candidates[idx % len(candidates)]
+        elif not candidates and et.node_id in allocated:
+            pass
         row = ApprovalTask(
             ticket_id=ticket.id,
             engine_task_id=et.engine_task_id,
