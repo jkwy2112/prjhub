@@ -2,9 +2,14 @@
   <div v-loading="loading">
     <el-row :gutter="16" class="stat-row">
       <el-col :span="6" v-for="card in statCards" :key="card.label">
-        <div class="stat-card" :style="{ borderTop: `3px solid ${card.color}` }">
-          <div class="stat-value" :style="{ color: card.color }">{{ card.value }}</div>
-          <div class="stat-label">{{ card.label }}</div>
+        <div class="stat-card">
+          <span class="stat-icon" :style="{ background: card.bg, color: card.color }">
+            <el-icon :size="20"><component :is="card.icon" /></el-icon>
+          </span>
+          <div class="stat-main">
+            <div class="stat-value">{{ card.value }}</div>
+            <div class="stat-label">{{ card.label }}</div>
+          </div>
         </div>
       </el-col>
     </el-row>
@@ -61,7 +66,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, markRaw } from 'vue'
+import { Folder, Loading, AlarmClock, CircleCheck } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 import { STATUS_META, STATUS_ORDER, TYPE_META, PRIORITY_META, fmtDateTime } from '../constants'
@@ -78,10 +84,14 @@ const loading = ref(false)
 const dash = reactive({})
 
 const statCards = computed(() => [
-  { label: '参与项目', value: dash.project_count ?? '-', color: '#409EFF' },
-  { label: '我的未完成任务', value: dash.my_open_task_count ?? '-', color: '#E6A23C' },
-  { label: '已逾期任务', value: dash.overdue_task_count ?? '-', color: '#F56C6C' },
-  { label: '已完成任务', value: dash.done_task_count ?? '-', color: '#67C23A' },
+  { label: '参与项目', value: dash.project_count ?? '-', color: 'var(--ph-primary)',
+    bg: 'var(--ph-primary-light-9)', icon: markRaw(Folder) },
+  { label: '进行中任务', value: dash.my_open_task_count ?? '-', color: 'var(--ph-warning)',
+    bg: 'var(--ph-warning-light-9)', icon: markRaw(Loading) },
+  { label: '已逾期', value: dash.overdue_task_count ?? '-', color: 'var(--ph-danger)',
+    bg: 'var(--ph-danger-light-9)', icon: markRaw(AlarmClock) },
+  { label: '已完成', value: dash.done_task_count ?? '-', color: 'var(--ph-success)',
+    bg: 'var(--ph-success-light-9)', icon: markRaw(CircleCheck) },
 ])
 
 const statusChartOption = computed(() => ({
@@ -118,14 +128,19 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.stat-row { margin-bottom: 16px; }
+.stat-row { margin-bottom: var(--ph-space-4); }
 .stat-card {
-  background: var(--ph-fill-blank, #fff); border-radius: var(--ph-radius-lg); padding: var(--ph-space-5);
+  display: flex; align-items: center; gap: var(--ph-space-4);
+  background: var(--ph-fill-blank, #fff); border-radius: var(--ph-radius-lg);
+  padding: var(--ph-space-4) var(--ph-space-5);
   border: 1px solid var(--ph-border-lighter); box-shadow: var(--ph-shadow-1);
   transition: box-shadow .2s, transform .15s;
 }
 .stat-card:hover { box-shadow: var(--ph-shadow-2); transform: translateY(-2px); }
-.stat-value { font-size: 30px; font-weight: 700; }
-.stat-label { color: #909399; font-size: 13px; margin-top: 4px; }
+.stat-icon { width: 46px; height: 46px; border-radius: 12px; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; }
+.stat-value { font-size: 26px; font-weight: 700; color: var(--ph-text-primary);
+  font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stat-label { color: var(--ph-text-secondary); font-size: var(--ph-font-xs); margin-top: 2px; }
 .chart { height: 260px; }
 </style>

@@ -429,19 +429,28 @@ watch(tab, (v) => {
   flex: 1; min-width: 240px; background: #eceef1; border-radius: 10px;
   padding: 10px; min-height: 400px;
 }
-.kanban-col-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; padding: 0 4px; }
+.kanban-col-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 0 6px; }
+.kb-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.kb-title { font-size: var(--ph-font-sm); color: var(--ph-text-primary); flex: 1; }
+.kb-count { background: var(--ph-fill); color: var(--ph-text-secondary); font-size: 11px;
+  min-width: 20px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px; padding: 0 6px; }
 .kanban-count { color: #909399; font-size: 12px; }
 .kanban-card {
-  background: #fff; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
-  cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+  background: var(--ph-fill-blank, #fff); border-radius: var(--ph-radius-md);
+  padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+  border: 1px solid var(--ph-border-lighter); border-left: 3px solid var(--card-accent, var(--ph-border));
+  box-shadow: var(--ph-shadow-1); transition: box-shadow .15s, transform .15s;
 }
-.kanban-card:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+.kanban-card:hover { box-shadow: var(--ph-shadow-2); transform: translateY(-1px); }
 .card-title { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .card-key { color: #c0c4cc; font-size: 11px; }
 .card-name { font-size: 13px; color: #303133; margin-bottom: 8px; }
 .card-foot { display: flex; align-items: center; gap: 6px; }
 .card-meta { margin-left: auto; display: flex; align-items: center; gap: 3px; color: #909399; font-size: 12px; }
-.overdue { color: #f56c6c; font-size: 11px; }
+.overdue { color: var(--ph-danger); font-size: 11px; }
+.due-chip { font-size: 10px; padding: 1px 6px; border-radius: 4px;
+  background: var(--ph-fill-light); color: var(--ph-text-secondary); }
+.due-chip.overdue { background: var(--ph-danger-light-9); color: var(--ph-danger); font-weight: 600; }
 .add-card { width: 100%; color: #909399; }
 .list-toolbar { display: flex; gap: 10px; margin-bottom: 12px; }
 .clone-url {
