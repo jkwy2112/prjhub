@@ -597,13 +597,13 @@ const TPL_ICONS = { Document, Tickets, Money, ShoppingCart, Goods, Calendar, Use
 const iconOf = (name) => TPL_ICONS[name] || Document
 
 function launchTemplate(def) {
-  form.definition_key = def.key
-  openCreate()
+  openCreate(def)
 }
 
-function openCreate() {
+function openCreate(def = null) {
   Object.assign(form, {
-    definition_key: definitions.value[0]?.key || 'generic_approval', title: '', amount: 100,
+    definition_key: def?.key || definitions.value[0]?.key || 'generic_approval',
+    title: '', amount: 100,
     approver_l1: null, approver_l2: null, countersigners: [], approver_fin: null, approver_tech: null,
   })
   l1User.value = null; l2User.value = null; csUsers.value = []

@@ -77,4 +77,16 @@ describe('发起审批对话框', () => {
 
     w.unmount()
   }, 30000)
+
+  it('点击不同模板卡片打开对应模板(不是第一个)', async () => {
+    const w = mount(Approvals, { attachTo: document.body })
+    await flush(200)
+    const card = [...document.querySelectorAll('.tpl-card')].find((c) => c.textContent.includes('报销审批V2'))
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush(150)
+    const text = document.querySelector('.el-dialog')?.textContent || ''
+    expect(text).toContain('报销审批V2')
+    expect(text).not.toContain('通用审批流')
+    w.unmount()
+  }, 30000)
 })
