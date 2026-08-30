@@ -257,7 +257,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus } from '@element-plus/icons-vue'
+import { Plus, Printer } from '@element-plus/icons-vue'
 import api from '../api'
 import { fmtDateTime } from '../constants'
 import { useAuthStore } from '../stores/auth'
@@ -334,6 +334,49 @@ const STATUS = {
 
 function statusMeta(s) {
   return STATUS[s] || { label: s, type: 'info' }
+}
+
+
+const visibleFormItems = computed(() =>
+  (detail.value?.form_items || []).filter((f) => f.name !== 'Description'
+    && (detail.value?.my_node_form_perms || {})[f.id] !== 'hidden'))
+const permHiddenCount = computed(() =>
+  (detail.value?.form_items || []).filter((f) => f.name !== 'Description'
+    && (detail.value?.my_node_form_perms || {})[f.id] === 'hidden').length)
+const isEditable = (f) => (detail.value?.my_node_form_perms || {})[f.id] === 'editable'
+  && !!detail.value?.my_pending_task_id
+
+function displayValue(f) {
+  const v = detail.value?.form_values?.[f.id]
+  if (v === undefined || v === null || v === '') return '—'
+  if (Array.isArray(v)) return v.join('、')
+  return String(v)
+}
+
+function printTicket() {
+  const d = detail.value
+  if (!d) return
+  const ACTION = { approve: '同意', reject: '驳回', cc: '抄送', trigger: '触发器' }
+  const rows = (d.tasks || []).map((t) => `
+    <tr><td>${t.node_name}</td><td>${t.assignee_id ? (userMap[t.assignee_id] || t.assignee_id) : '系统'}</td>
+    <td>${ACTION[t.action] || (t.status === 'pending' ? '待处理' : t.status === 'cancelled' ? '已取消' : '已处理')}</td>
+    <td>${(t.comment || '').replace(/</g, '&lt;')}</td><td>${t.finished_at ? fmtDateTime(t.finished_at) : '—'}</td></tr>`).join('')
+  const formRows = (d.form_items || []).filter((f) => f.name !== 'Description').map((f) => `
+    <tr><td>${f.title}</td><td>${displayValue(f)}</td></tr>`).join('')
+  const win = window.open('', '_blank')
+  win.document.write(`<html><head><title>${d.title} - 审批单</title>
+    <style>body{font-family:'PingFang SC',sans-serif;padding:24px;color:#303133}
+    h2{margin-bottom:4px} .meta{color:#909399;font-size:12px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px}
+    td,th{border:1px solid #dcdfe6;padding:6px 10px;font-size:13px;text-align:left}
+    th{background:#f5f7fa}</style></head><body>
+    <h2>${d.title}</h2>
+    <div class="meta">流程: ${d.definition_name || ''} v${d.definition_version} | 状态: ${statusMeta(d.status).label} | 发起: ${fmtDateTime(d.created_at)}</div>
+    ${formRows ? `<table><tr><th style="width:140px">表单字段</th><th>内容</th></tr>${formRows}</table>` : ''}
+    <table><tr><th>环节</th><th>处理人</th><th>动作</th><th>意见</th><th>时间</th></tr>${rows}</table>
+    </body></html>`)
+  win.document.close()
+  win.print()
 }
 
 function timelineColor(t) {

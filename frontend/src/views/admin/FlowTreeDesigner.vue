@@ -4,13 +4,18 @@
       <div class="wf-toolbar-left">
         <el-button :icon="Back" text @click="$router.push('/admin/flows')">返回</el-button>
         <el-steps :active="stepActive" align-center style="flex: 1; max-width: 460px; cursor: pointer"
-          finish-status="success" process-status="process" @click="onStepClick">
+          finish-status="success" process-status="process">
           <el-step title="基础信息" @click="tab = 'base'" />
           <el-step title="审批表单" @click="tab = 'form'" />
           <el-step title="审批流程" @click="tab = 'process'" />
         </el-steps>
       </div>
       <div>
+        <el-radio-group v-model="tab" size="small" style="margin-right: 10px">
+          <el-radio-button value="base">基础信息</el-radio-button>
+          <el-radio-button value="form">表单设计</el-radio-button>
+          <el-radio-button value="process">流程设计</el-radio-button>
+        </el-radio-group>
         <el-button size="small" :icon="View" @click="checkPublish">检查并发布</el-button>
       </div>
     </div>
