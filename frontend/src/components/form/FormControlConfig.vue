@@ -1,6 +1,6 @@
 <template>
   <div class="fc-wrap">
-    <el-form label-width="90px" size="small">
+    <el-form label-width="90px" size="small" label-position="top" class="fc-form">
       <el-form-item label="表单名称">
         <el-input v-model="item.title" maxlength="30" />
       </el-form-item>

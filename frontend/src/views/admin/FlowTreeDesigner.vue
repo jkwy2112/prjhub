@@ -1,24 +1,28 @@
 <template>
   <div class="wf-designer">
-    <div class="wf-toolbar">
-      <div class="wf-toolbar-left">
-        <el-button :icon="Back" text @click="$router.push('/admin/flows')">返回</el-button>
-        <el-steps :active="stepActive" align-center style="flex: 1; max-width: 460px; cursor: pointer"
-          finish-status="success" process-status="process">
-          <el-step title="基础信息" @click="tab = 'base'" />
-          <el-step title="审批表单" @click="tab = 'form'" />
-          <el-step title="审批流程" @click="tab = 'process'" />
-        </el-steps>
+    <header class="wf-header">
+      <div class="wf-header-left">
+        <el-button :icon="Back" text circle @click="$router.push('/admin/flows')" />
+        <span class="wf-header-logo" :style="{ background: logo.background }">
+          <el-icon :size="18" style="color:#fff"><component :is="iconOf(logo.icon)" /></el-icon>
+        </span>
+        <div class="wf-header-title">
+          <b>{{ defName || '未命名流程' }}</b>
+          <span class="wf-header-sub">{{ groupName }} · v{{ definitionVersion || '新' }}</span>
+        </div>
       </div>
-      <div>
-        <el-radio-group v-model="tab" size="small" style="margin-right: 10px">
-          <el-radio-button value="base">基础信息</el-radio-button>
-          <el-radio-button value="form">表单设计</el-radio-button>
-          <el-radio-button value="process">流程设计</el-radio-button>
-        </el-radio-group>
-        <el-button size="small" :icon="View" @click="checkPublish">检查并发布</el-button>
+      <nav class="wf-tabs">
+        <div v-for="t in TABS" :key="t.value" class="wf-tab" :class="{ active: tab === t.value }"
+          @click="tab = t.value">
+          <el-icon><component :is="iconOf(t.icon)" /></el-icon>{{ t.label }}
+        </div>
+      </nav>
+      <div class="wf-header-right">
+        <el-badge :value="errors.length" :hidden="!errors.length" type="danger">
+          <el-button size="default" :icon="View" @click="checkPublish">检查并发布</el-button>
+        </el-badge>
       </div>
-    </div>
+    </header>
 
     <div class="wf-body">
       <div v-show="tab === 'base'" class="wf-base-pane">
@@ -352,6 +356,12 @@ const groupName = ref('默认分组')
 const remark = ref('')
 const logo = reactive({ icon: 'Document', background: '#409EFF' })
 const checkVisible = ref(false)
+const TABS = [
+  { value: 'base', label: '基础信息', icon: 'Document' },
+  { value: 'form', label: '审批表单', icon: 'Tickets' },
+  { value: 'process', label: '审批流程', icon: 'Share' },
+]
+const definitionVersion = ref(null)
 const checkStep = ref(0)
 const checkDone = ref(false)
 const checkErrors = ref([])
@@ -696,6 +706,7 @@ onMounted(async () => {
     groupName.value = data.group_name || '默认分组'
     remark.value = data.remark || ''
     Object.assign(logo, data.logo || { icon: 'Document', background: '#409EFF' })
+    definitionVersion.value = data.version
     const loaded = data.tree || { type: 'ROOT', childNode: null }
     normalizeNode(loaded.childNode)
     Object.assign(tree, loaded)
@@ -705,12 +716,32 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.wf-designer { display: flex; flex-direction: column; height: calc(100vh - 190px);
-  background: #fff; border-radius: 8px; overflow: hidden; }
-.wf-toolbar { display: flex; justify-content: space-between; align-items: center;
-  padding: 8px 12px; border-bottom: 1px solid var(--ph-border-lighter); }
-.wf-toolbar-left { display: flex; align-items: center; gap: 8px; }
-.wf-body { flex: 1; display: flex; min-height: 0; }
+.wf-designer { display: flex; flex-direction: column; height: calc(100vh - 172px);
+  background: var(--ph-bg-page); border-radius: var(--ph-radius-lg); overflow: hidden;
+  border: 1px solid var(--ph-border-lighter); }
+.wf-header {
+  display: flex; align-items: center; gap: var(--ph-space-4);
+  padding: var(--ph-space-2) var(--ph-space-4);
+  background: var(--ph-fill-blank, #fff); border-bottom: 1px solid var(--ph-border-lighter);
+  flex-shrink: 0;
+}
+.wf-header-left { display: flex; align-items: center; gap: var(--ph-space-3); min-width: 240px; }
+.wf-header-logo { width: 34px; height: 34px; border-radius: var(--ph-radius-md);
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.wf-header-title { display: flex; flex-direction: column; line-height: 1.3; }
+.wf-header-title b { font-size: var(--ph-font-base); color: var(--ph-text-primary); }
+.wf-header-sub { font-size: var(--ph-font-xs); color: var(--ph-text-secondary); }
+.wf-tabs { display: flex; gap: var(--ph-space-1); flex: 1; justify-content: center; }
+.wf-tab {
+  display: flex; align-items: center; gap: 6px; padding: 8px 18px; cursor: pointer;
+  font-size: var(--ph-font-sm); color: var(--ph-text-regular); border-radius: var(--ph-radius-md);
+  transition: all .15s; border: 1px solid transparent;
+}
+.wf-tab:hover { color: var(--ph-primary); background: var(--ph-primary-light-9); }
+.wf-tab.active { color: var(--ph-primary); background: var(--ph-primary-light-9);
+  border-color: var(--ph-primary-light-5); font-weight: 600; }
+.wf-header-right { min-width: 140px; display: flex; justify-content: flex-end; }
+.wf-body { flex: 1; display: flex; min-height: 0; background: var(--ph-bg-page); }
 .wf-form-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
 
 /* ===== AntFlow-style props drawer ===== */
@@ -741,7 +772,8 @@ onMounted(async () => {
   padding: var(--ph-space-2) 0; border-bottom: 1px dashed var(--ph-border-lighter); }
 .dp-perm-name { font-size: var(--ph-font-sm); color: var(--ph-text-regular); }
 .wf-form-pane :deep(.fd-layout) { flex: 1; }
-.wf-base-pane { flex: 1; overflow: auto; padding-top: 10px; }
+.wf-base-pane { flex: 1; overflow: auto; padding: var(--ph-space-5) 0; }
+.wf-base-pane :deep(.el-form-item__label) { font-weight: 600; color: var(--ph-text-primary); font-size: var(--ph-font-sm); }
 .logo-preview { width: 46px; height: 46px; border-radius: 10px; display: inline-flex;
   align-items: center; justify-content: center; vertical-align: middle; }
 .check-err { color: #f56c6c; font-size: 12px; padding: 2px 0; display: flex; justify-content: center; }

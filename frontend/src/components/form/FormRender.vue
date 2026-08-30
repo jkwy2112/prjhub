@@ -204,7 +204,8 @@ function addRow(item) {
 .amount-cn { font-size: 12px; color: #e6a23c; margin-top: 4px; }
 .fr-table { width: 100%; border-collapse: collapse; }
 .fr-table th, .fr-table td { border: 1px solid #ebeef5; padding: 4px 6px; font-size: 12px; }
-.fr-item .fr-label { font-size: 13px; color: #606266; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }
+.fr-item .fr-label { font-size: var(--ph-font-sm); color: var(--ph-text-regular); font-weight: 600;
+  margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }
 .fr-required { color: #f56c6c; }
 .fr-id { margin-left: auto; font-size: 11px; color: #c0c4cc; font-family: monospace; }
 .fr-item.desc { margin-bottom: -4px; }

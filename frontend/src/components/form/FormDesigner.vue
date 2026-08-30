@@ -153,28 +153,41 @@ async function doPreviewUpload({ opt }) {
 
 <style scoped>
 .fd-layout { display: flex; gap: 14px; height: 100%; min-height: 560px; }
-.fd-palette { width: 190px; flex-shrink: 0; background: #fff; border-radius: 8px; padding: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-y: auto; }
-.fd-group-name { font-size: 12px; color: #909399; font-weight: 600; margin: 8px 0; }
+.fd-palette { width: 200px; flex-shrink: 0; background: var(--ph-fill-blank, #fff);
+  border-radius: var(--ph-radius-lg); border: 1px solid var(--ph-border-lighter);
+  padding: var(--ph-space-3); overflow-y: auto; }
+.fd-group-name { font-size: var(--ph-font-xs); color: var(--ph-text-secondary); font-weight: 600;
+  margin: var(--ph-space-3) 0 var(--ph-space-2); display: flex; align-items: center; gap: 6px; }
+.fd-group-name::after { content: ''; flex: 1; height: 1px; background: var(--ph-border-lighter); }
 .fd-palette-item {
-  display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-bottom: 6px;
-  border: 1px solid #ebeef5; border-radius: 8px; cursor: grab; font-size: 12px; color: #606266;
-  background: #fafafa;
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: var(--ph-space-2);
+  border: 1px solid var(--ph-border-lighter); border-radius: var(--ph-radius-md); cursor: grab;
+  font-size: var(--ph-font-xs); color: var(--ph-text-regular); background: var(--ph-fill-blank);
+  transition: all .15s; user-select: none;
 }
-.fd-palette-item:hover { border-color: #409eff; color: #409eff; background: #fff; }
+.fd-palette-item:hover { border-color: var(--ph-primary); color: var(--ph-primary);
+  background: var(--ph-primary-light-9); transform: translateY(-1px); }
+.fd-palette-item:active { cursor: grabbing; }
 .fd-tip { font-size: 11px; color: #c0c4cc; margin-top: 10px; line-height: 1.5; }
-.fd-canvas { flex: 1; overflow: auto; background: #f7f8fa; border-radius: 8px; padding: 14px; }
+.fd-canvas { flex: 1; overflow: auto; background: var(--ph-bg-page);
+  border: 1px solid var(--ph-border-lighter); border-radius: var(--ph-radius-lg);
+  padding: var(--ph-space-4); }
 .fd-canvas-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .fd-canvas-tip { color: #c0c4cc; font-size: 12px; margin-right: auto; align-self: center; }
 .fd-drag-area { min-height: 200px; }
-.fd-field { background: #fff; border: 1.5px solid #ebeef5; border-left-width: 4px; border-radius: 8px;
-  padding: 10px 12px; margin-bottom: 10px; cursor: pointer; }
-.fd-field.selected { border-left-color: #409eff; box-shadow: 0 2px 8px rgba(64,158,255,0.12); }
-.fd-field-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.fd-field-title { font-size: 13px; font-weight: 600; color: #303133; }
-.req { color: #f56c6c; }
-.fd-field-id { font-size: 11px; color: #c0c4cc; font-family: monospace; }
-.fd-ops { margin-left: auto; display: flex; gap: 2px; }
+.fd-field { background: var(--ph-fill-blank, #fff); border: 1px solid var(--ph-border-lighter);
+  border-left: 3px solid var(--ph-border); border-radius: var(--ph-radius-base);
+  padding: var(--ph-space-3) var(--ph-space-3); margin-bottom: var(--ph-space-2); cursor: pointer;
+  transition: all .15s; }
+.fd-field:hover { border-left-color: var(--ph-primary-light-3); box-shadow: var(--ph-shadow-1); }
+.fd-field.selected { border-left-color: var(--ph-primary);
+  box-shadow: 0 0 0 1px var(--ph-primary-light-5), var(--ph-shadow-1); }
+.fd-field-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.fd-field-title { font-size: var(--ph-font-sm); font-weight: 600; color: var(--ph-text-primary); }
+.req { color: var(--ph-danger); }
+.fd-field-id { font-size: 11px; color: var(--ph-text-disabled); font-family: monospace; }
+.fd-ops { margin-left: auto; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+.fd-field:hover .fd-ops { opacity: 1; }
 .fd-props { width: 300px; flex-shrink: 0; background: #fff; border-radius: 8px; padding: 12px;
   overflow-y: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
 .fd-props :deep(.el-form-item) { margin-bottom: 10px; }
