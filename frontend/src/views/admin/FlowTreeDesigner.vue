@@ -124,9 +124,9 @@
                 </el-select>
               </el-form-item>
               <el-form-item label="超时催办">
-                <el-switch v-model="selected.props.timeout.enabled"
-                  @change="ensureTimeout(selected)" />
-                <template v-if="selected.props.timeout.enabled">
+                <el-switch :model-value="!!selected.props.timeout?.enabled"
+                  @change="(v) => toggleTimeout(selected, v)" />
+                <template v-if="selected.props.timeout?.enabled">
                   <el-input-number v-model="selected.props.timeout.value" :min="1" size="small"
                     style="margin-left: 8px; width: 90px" />
                   <el-select v-model="selected.props.timeout.unit" size="small" style="width: 70px">
@@ -309,10 +309,13 @@ import { COMPARE_BY_TYPE } from '../../components/form/formComponents'
 const formFields = computed(() => formItems.value.filter((i) => i.name !== 'Description'))
 const userFields = computed(() => formItems.value.filter((i) => i.name === 'UserPicker'))
 
-function ensureTimeout(node) {
+function toggleTimeout(node, enabled) {
   if (!node.props.timeout) node.props.timeout = {}
-  if (!node.props.timeout.unit) node.props.timeout.unit = 'H'
-  if (!node.props.timeout.value) node.props.timeout.value = 24
+  node.props.timeout.enabled = !!enabled
+  if (enabled) {
+    if (!node.props.timeout.unit) node.props.timeout.unit = 'H'
+    if (!node.props.timeout.value) node.props.timeout.value = 24
+  }
 }
 function permOf(node, fid) {
   return node.props?.formPerms?.[fid] || 'visible'
@@ -411,6 +414,27 @@ async function loadUsersByIds(ids) {
   }))
 }
 
+function normalizeNode(node) {
+  if (!node) return
+  if (node.type === 'APPROVAL') {
+    node.props = { assigneeType: 'users', users: [], mode: 'any', count: 2,
+                   nobody: 'to_admin', refuse: 'TO_END', formField: '',
+                   formPerms: {}, timeout: { enabled: false, unit: 'H', value: 24 },
+                   ...(node.props || {}) }
+    if (!node.props.timeout || typeof node.props.timeout !== 'object') {
+      node.props.timeout = { enabled: false, unit: 'H', value: 24 }
+    }
+  }
+  if (node.type === 'CC') {
+    node.props = { assigneeType: 'users', users: [], ...(node.props || {}) }
+  }
+  if (node.type === 'TRIGGER') {
+    node.props = { url: '', method: 'POST', ...(node.props || {}) }
+  }
+  ;(node.branches || []).forEach((b) => normalizeNode(b.childNode))
+  normalizeNode(node.childNode)
+}
+
 function collectUserIds(node, acc) {
   if (!node) return acc
   if (node.type === 'APPROVAL' || node.type === 'CC') acc.push(...(node.props?.users || []))
@@ -486,7 +510,9 @@ onMounted(async () => {
     defKey.value = data.key
     defName.value = data.name
     formItems.value = data.form_items || []
-    Object.assign(tree, data.tree || { type: 'ROOT', childNode: null })
+    const loaded = data.tree || { type: 'ROOT', childNode: null }
+    normalizeNode(loaded.childNode)
+    Object.assign(tree, loaded)
     await loadUsersByIds(collectUserIds(tree.childNode, []))
   }
 })
