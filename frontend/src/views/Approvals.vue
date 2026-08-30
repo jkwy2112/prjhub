@@ -21,8 +21,8 @@
       <el-table-column label="发起人" width="100">
         <template #default="{ row }">{{ userMap[row.ticket.submitted_by] || row.ticket.submitted_by }}</template>
       </el-table-column>
-      <el-table-column label="金额" width="100">
-        <template #default="{ row }">￥{{ row.ticket.variables?.amount ?? '-' }}</template>
+      <el-table-column v-if="pendingAmountLabel" :label="pendingAmountLabel" width="110">
+        <template #default="{ row }">{{ amountText(row.ticket) }}</template>
       </el-table-column>
       <el-table-column label="发起时间" width="160">
         <template #default="{ row }">{{ fmtDateTime(row.ticket.created_at) }}</template>
@@ -49,8 +49,8 @@
       <el-table-column label="流程" width="200">
         <template #default="{ row }">{{ row.definition_name || '通用审批流' }} v{{ row.definition_version }}</template>
       </el-table-column>
-      <el-table-column label="金额" width="100">
-        <template #default="{ row }">￥{{ row.variables?.amount ?? '-' }}</template>
+      <el-table-column v-if="submittedAmountLabel" :label="submittedAmountLabel" width="110">
+        <template #default="{ row }">{{ amountText(row) }}</template>
       </el-table-column>
       <el-table-column label="当前待审批" width="140">
         <template #default="{ row }">
@@ -132,10 +132,8 @@
               <el-alert v-else-if="f.name === 'Description'" type="info" :closable="false" :title="f.props?.content" />
             </el-form-item>
           </template>
-          <el-form-item v-else label="金额">
-            <el-input-number v-model="form.amount" :min="0" :step="100" />
-            <span class="form-tip">供条件分支判断 (amount)</span>
-          </el-form-item>
+          <el-alert v-else-if="currentDef?.has_tree" type="info" :closable="false"
+            title="该流程未设计表单, 可直接发起" style="width: 100%" />
           <!-- runtime CC pickers from tree -->
           <el-form-item v-for="rc in runtimeCcs" :key="rc.tid" :label="rc.name + ' (抄送)'">
             <el-select v-model="rc.users" multiple filterable remote :remote-method="searchUsers"
@@ -218,7 +216,9 @@
             <el-tag size="small" :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
           </el-descriptions-item>
           <el-descriptions-item label="流程版本">v{{ detail.definition_version }}</el-descriptions-item>
-          <el-descriptions-item label="金额">￥{{ detail.variables?.amount ?? '-' }}</el-descriptions-item>
+          <el-descriptions-item v-if="amountFieldOf(detail)" :label="amountFieldOf(detail).title">
+            {{ amountText(detail) }}
+          </el-descriptions-item>
           <el-descriptions-item label="发起时间">{{ fmtDateTime(detail.created_at) }}</el-descriptions-item>
         </el-descriptions>
         <el-card v-if="detail.form_items?.length" shadow="never" style="margin-bottom: 14px">
@@ -337,6 +337,41 @@ function statusMeta(s) {
 }
 
 
+function amountFieldOf(ticket) {
+  const items = ticket?.form_items || []
+  const designed = items.find((f) => f.name === 'AmountInput')
+    || items.find((f) => f.name === 'NumberInput' && /金额|amount/i.test(f.title + ' ' + f.id))
+  if (designed) return designed
+  // built-in templates (no designed form) whose variables contain amount
+  if (!items.length && ticket?.variables && 'amount' in ticket.variables
+    && ticket.variables.amount !== '' && ticket.variables.amount !== null) {
+    return { id: 'amount', title: '金额', name: 'AmountInput' }
+  }
+  return null
+}
+const pendingAmountLabel = computed(() => {
+  for (const row of pending.value) {
+    const f = amountFieldOf(row.ticket)
+    if (f) return f.title
+  }
+  return ''
+})
+const submittedAmountLabel = computed(() => {
+  for (const row of submitted.value) {
+    const f = amountFieldOf(row)
+    if (f) return f.title
+  }
+  return ''
+})
+
+function amountText(ticket) {
+  const f = amountFieldOf(ticket)
+  if (!f) return '-'
+  const v = ticket?.variables?.[f.id]
+  if (v === undefined || v === null || v === '') return '-'
+  return f.name === 'AmountInput' ? `￥${v}` : String(v)
+}
+
 const visibleFormItems = computed(() =>
   (detail.value?.form_items || []).filter((f) => f.name !== 'Description'
     && (detail.value?.my_node_form_perms || {})[f.id] !== 'hidden'))
@@ -393,9 +428,25 @@ async function load() {
       api.get('/approvals/my-submitted'),
       api.get('/approvals/definitions'),
     ])
+    definitions.value = d.data
+    // attach form_items (from definition) to pending tickets so amount col can detect
+    const defMap = Object.fromEntries(d.data.map((x) => [x.id, x]))
+    p.data.forEach((row) => {
+      const def = defMap[row.ticket.definition_id]
+      if (def?.has_form) row.ticket.form_items = row.ticket.form_items || null // filled lazily below
+    })
+    // lazily fetch trees for designed defs (cached)
+    for (const row of p.data) {
+      const def = defMap[row.ticket.definition_id]
+      if (def?.has_form && !row.ticket.form_items) {
+        try {
+          const { data } = await api.get(`/approvals/definitions/${def.id}/tree`)
+          row.ticket.form_items = data.form_items || []
+        } catch { row.ticket.form_items = [] }
+      }
+    }
     pending.value = p.data
     submitted.value = s.data
-    definitions.value = d.data
     const ids = new Set()
     p.data.forEach((x) => ids.add(x.ticket.submitted_by))
     s.data.forEach((x) => { ids.add(x.submitted_by); x.tasks.forEach((t) => t.assignee_id && ids.add(t.assignee_id)) })
