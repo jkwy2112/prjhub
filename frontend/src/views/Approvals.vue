@@ -322,7 +322,7 @@ import { fmtDateTime } from '../constants'
 import { useAuthStore } from '../stores/auth'
 
 const auth = useAuthStore()
-const tab = ref('pending')
+const tab = ref('launch')
 const loading = ref(false)
 const creating = ref(false)
 const pending = ref([])

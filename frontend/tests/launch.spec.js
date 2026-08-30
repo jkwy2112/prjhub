@@ -48,28 +48,19 @@ describe('发起审批对话框', () => {
     const w = mount(Approvals, { attachTo: document.body })
     await flush(200)
 
-    // open create dialog
-    const btn = w.findAll('button').find((b) => b.text().includes('发起审批'))
-    expect(btn, '发起审批按钮存在').toBeTruthy()
-    await btn.trigger('click')
+    // switch to 发起审批 tab (gallery)
+    const tabBtn = w.findAll('.el-radio-button__original-radio, .el-radio-button').find((b) => b.text().includes('发起审批'))
+    const tabEl = [...document.querySelectorAll('.el-radio-button')].find((b) => b.textContent.includes('发起审批'))
+    tabEl.dispatchEvent(new MouseEvent('click', { bubbles: true }))
     await flush(100)
+    const card = [...document.querySelectorAll('.tpl-card')].find((c) => c.textContent.includes('报销审批V2'))
+    expect(card, '模板卡片存在').toBeTruthy()
+    card.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await flush(150)
 
     // dialog open?
     const dlg = document.querySelector('.el-dialog')
     expect(dlg, '对话框打开').toBeTruthy()
-
-    // select designed flow
-    const selects = w.findAllComponents({ name: 'ElSelect' })
-    // find the definition select (first in dialog) — set via native select? use component vm
-    const defSelect = selects[0]
-    await defSelect.vm.handleOptionSelect || true
-    // simpler: find option '报销审批V2' in DOM and click
-    const opt = [...document.querySelectorAll('.el-select-dropdown__item')].find((o) => o.textContent.includes('报销审批V2'))
-    // dropdown may not be rendered until click; open first
-    await defSelect.find('.el-select__wrapper, .el-input__inner').trigger('click')
-    await flush(50)
-    const opt2 = [...document.querySelectorAll('.el-select-dropdown__item')].find((o) => o.textContent.includes('报销审批V2'))
-    if (opt2) { opt2.dispatchEvent(new MouseEvent('click', { bubbles: true })); await flush(150) }
 
     const dlgText = document.querySelector('.el-dialog')?.textContent || ''
     console.log('DIALOG TEXT >>>', dlgText.slice(0, 400))
