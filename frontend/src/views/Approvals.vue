@@ -137,38 +137,28 @@
             title="该流程未设计表单, 可直接发起" style="width: 100%" />
           <!-- runtime CC pickers from tree -->
           <el-form-item v-for="rc in runtimeCcs" :key="rc.tid" :label="rc.name + ' (抄送)'">
-            <el-select v-model="rc.users" multiple filterable remote :remote-method="searchUsers"
-              placeholder="搜索并选择抄送人(可选)" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="rc.userObjs" multiple :title="`选择${rc.name}抄送人`"
+              @change="(v) => rc.users = v.map((x) => x.id)" />
           </el-form-item>
           <!-- runtime approvers from tree -->
           <el-form-item v-for="rt in runtimeApprovers" :key="rt.tid" :label="rt.name" required>
-            <el-select v-model="rt.users" multiple filterable remote :remote-method="searchUsers"
-              placeholder="搜索并选择审批人" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="rt.userObjs" multiple :title="`选择${rt.name}`"
+              @change="(v) => rt.users = v.map((x) => x.id)" />
           </el-form-item>
         </template>
 
         <template v-else-if="form.definition_key === 'parallel_approval'">
           <el-form-item label="一级审批人" required>
-            <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
-              placeholder="搜索用户" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="l1User" :multiple="false" title="选择一级审批人"
+              @change="(v) => form.approver_l1 = v?.id || null" />
           </el-form-item>
           <el-form-item label="财务审批人" required>
-            <el-select v-model="form.approver_fin" filterable remote :remote-method="searchUsers"
-              placeholder="并行分支 A" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="finUser" :multiple="false" title="选择财务审批人"
+              @change="(v) => form.approver_fin = v?.id || null" />
           </el-form-item>
           <el-form-item label="技术评审人" required>
-            <el-select v-model="form.approver_tech" filterable remote :remote-method="searchUsers"
-              placeholder="并行分支 B" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="techUser" :multiple="false" title="选择技术评审人"
+              @change="(v) => form.approver_tech = v?.id || null" />
           </el-form-item>
         </template>
 
@@ -178,22 +168,16 @@
             <span class="form-tip">金额 &gt; 1000 走「会签」分支</span>
           </el-form-item>
           <el-form-item label="一级审批人" required>
-            <el-select v-model="form.approver_l1" filterable remote :remote-method="searchUsers"
-              placeholder="搜索用户" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="l1User" :multiple="false" title="选择一级审批人"
+              @change="(v) => form.approver_l1 = v?.id || null" />
           </el-form-item>
           <el-form-item label="二级审批人">
-            <el-select v-model="form.approver_l2" filterable remote :remote-method="searchUsers" clearable
-              placeholder="小额分支的二级审批人" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="l2User" :multiple="false" title="选择二级审批人"
+              @change="(v) => form.approver_l2 = v?.id || null" />
           </el-form-item>
           <el-form-item label="会签人">
-            <el-select v-model="form.countersigners" multiple filterable remote :remote-method="searchUsers"
-              placeholder="大额分支会签(2人通过即过)" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-model="csUsers" multiple title="选择会签人"
+              @change="(v) => form.countersigners = v.map((x) => x.id)" />
           </el-form-item>
         </template>
       </el-form>
@@ -331,6 +315,11 @@ const form = reactive({
   approver_l1: null, approver_l2: null, countersigners: [],
   approver_fin: null, approver_tech: null,
 })
+const l1User = ref(null)
+const l2User = ref(null)
+const csUsers = ref([])
+const finUser = ref(null)
+const techUser = ref(null)
 
 watch(() => form.definition_key, async (key) => {
   runtimeApprovers.value = []
@@ -349,7 +338,7 @@ watch(() => form.definition_key, async (key) => {
     const walk = (node) => {
       if (!node) return
       if (node.type === 'APPROVAL' && node.props?.assigneeType === 'runtime' && node.bpmnId) {
-        found.push({ tid: node.bpmnId, name: node.name, users: [] })
+        found.push({ tid: node.bpmnId, name: node.name, users: [], userObjs: [] })
       }
       ;(node.branches || []).forEach((b) => walk(b.childNode))
       walk(node.childNode)
@@ -360,7 +349,7 @@ watch(() => form.definition_key, async (key) => {
     const walkCc = (node) => {
       if (!node) return
       if (node.type === 'CC' && node.props?.assigneeType === 'runtime' && node.bpmnId) {
-        ccs.push({ tid: node.bpmnId, name: node.name, users: [] })
+        ccs.push({ tid: node.bpmnId, name: node.name, users: [], userObjs: [] })
       }
       ;(node.branches || []).forEach((b) => walkCc(b.childNode))
       walkCc(node.childNode)
@@ -568,6 +557,10 @@ function openCreate() {
     definition_key: definitions.value[0]?.key || 'generic_approval', title: '', amount: 100,
     approver_l1: null, approver_l2: null, countersigners: [], approver_fin: null, approver_tech: null,
   })
+  l1User.value = null; l2User.value = null; csUsers.value = []
+  finUser.value = null; techUser.value = null
+  runtimeApprovers.value.forEach((rt) => { rt.userObjs = [] })
+  runtimeCcs.value.forEach((rc) => { rc.userObjs = [] })
   createVisible.value = true
 }
 

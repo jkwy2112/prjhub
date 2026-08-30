@@ -61,11 +61,10 @@
               type="datetimerange" :value-format="item.props.format || 'YYYY-MM-DD HH:mm'"
               :start-placeholder="item.props.placeholder || '开始'" end-placeholder="结束"
               style="width: 100%" />
-            <el-select v-else-if="item.name === 'UserPicker'" v-model="model[item.id]"
-              filterable remote :remote-method="(q) => $emit('search-users', q)"
-              :loading="userLoading" placeholder="搜索并选择人员" style="width: 100%" clearable>
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <UserPickerField v-else-if="item.name === 'UserPicker'"
+              :model-value="userValueOf(item)" :multiple="!!item.props.multiple"
+              :title="`选择${item.title}`"
+              @change="(v) => onUserPicked(item, v)" />
             <el-date-picker v-else-if="item.name === 'DateTimeRange'" v-model="model[item.id]"
               type="datetimerange" value-format="YYYY-MM-DD HH:mm"
               start-placeholder="开始" end-placeholder="结束" style="width: 100%" />
@@ -129,6 +128,7 @@
 
 <script setup>
 import { Plus, Close } from '@element-plus/icons-vue'
+import UserPickerField from '../common/UserPickerField.vue'
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -184,6 +184,20 @@ function amountChinese(money) {
     chineseStr += '整'
   }
   return chineseStr
+}
+
+function userValueOf(item) {
+  const v = props.model[item.id]
+  if (item.props.multiple) return v || []
+  return v || null
+}
+function onUserPicked(item, value) {
+  if (item.props.multiple) props.model[item.id] = (value || []).map((u) => u.id)
+  else props.model[item.id] = value ? value.id : null
+  // keep display name for detail rendering
+  props.model['__uname_' + item.id] = item.props.multiple
+    ? (value || []).map((u) => u.username)
+    : (value ? value.username : '')
 }
 
 function acceptOf(item) {

@@ -110,10 +110,8 @@
                 </div>
 
                 <template v-if="selected.props.assigneeType === 'users'">
-                  <el-select v-model="selected.props.users" multiple filterable remote
-                    :remote-method="searchUsers" placeholder="搜索并添加成员" style="width: 100%">
-                    <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-                  </el-select>
+                  <UserPickerField v-model="memberUsers" multiple title="选择审批成员"
+                    @change="(v) => selected.props.users = v.map((x) => x.id)" />
                 </template>
                 <template v-else-if="selected.props.assigneeType === 'form'">
                   <el-select v-model="selected.props.formField" style="width: 100%" placeholder="选择人员选择字段">
@@ -148,10 +146,10 @@
                   <el-radio value="auto_reject">自动驳回</el-radio>
                   <el-radio value="to_user">转交给指定人员</el-radio>
                 </el-radio-group>
-                <el-select v-if="nobodyHandler === 'to_user'" v-model="selected.props.nobody.users" multiple
-                  filterable remote :remote-method="searchUsers" placeholder="搜索转交人员" style="width: 100%">
-                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-                </el-select>
+                <div v-if="nobodyHandler === 'to_user'">
+                  <UserPickerField v-model="nobodyUsers" multiple title="选择转交人员"
+                    @change="(v) => selected.props.nobody.users = v.map((x) => x.id)" />
+                </div>
               </section>
 
               <section class="dp-sec">
@@ -281,10 +279,10 @@
               <el-radio-button value="users">固定成员</el-radio-button>
               <el-radio-button value="runtime">发起时指定</el-radio-button>
             </el-radio-group>
-            <el-select v-if="selected.props.assigneeType === 'users'" v-model="selected.props.users" multiple
-              filterable remote :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
-              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-            </el-select>
+            <div v-if="selected.props.assigneeType === 'users'">
+              <UserPickerField v-model="memberUsers" multiple title="选择抄送人"
+                @change="(v) => selected.props.users = v.map((x) => x.id)" />
+            </div>
             <el-alert type="info" :closable="false" title="抄送节点不阻塞流程：到达时自动通过并生成通知记录" />
           </section>
         </template>
@@ -343,6 +341,7 @@ import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, L
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
 import FormDesigner from '../../components/form/FormDesigner.vue'
+import UserPickerField from '../../components/common/UserPickerField.vue'
 
 const route = useRoute()
 const definitionId = route.params.id ? Number(route.params.id) : null
@@ -504,6 +503,41 @@ async function searchUsers(q) {
   const { data } = await api.get('/users', { params: { q } })
   userOptions.value = data
 }
+
+const userIndex = ref({})
+async function ensureUserIndex(ids) {
+  for (const id of [...new Set(ids)]) {
+    if (userIndex.value[id]) continue
+    try {
+      const { data } = await api.get('/users', { params: { q: String(id) } })
+      const hit = data.find((x) => x.id === id)
+      if (hit) userIndex.value[id] = hit
+    } catch { /* ignore */ }
+  }
+}
+const id2user = (id) => userIndex.value[id] || { id, username: `用户${id}`, name: `用户${id}` }
+const ids2users = (ids) => (ids || []).map(id2user)
+
+const memberUsers = ref([])
+const nobodyUsers = ref([])
+const handlerUsers = ref([])
+
+watch(selected, (node) => {
+  memberUsers.value = []
+  nobodyUsers.value = []
+  handlerUsers.value = []
+  if (!node) return
+  const ids = [
+    ...(node.props?.users || []),
+    ...(node.props?.nobody?.users || []),
+    ...(node.props?.handler_user_ids || []),
+  ]
+  ensureUserIndex(ids).then(() => {
+    memberUsers.value = ids2users(node.props?.users)
+    nobodyUsers.value = ids2users(node.props?.nobody?.users)
+    handlerUsers.value = ids2users(node.props?.handler_user_ids)
+  })
+}, { immediate: true, deep: false })
 
 const errorNodes = computed(() => new Set(errors.value.filter((e) => e.node).map((e) => e.node)))
 
