@@ -124,8 +124,10 @@ class ApprovalTask(Base):
     assignee_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"),
                                                        nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)  # pending/completed/cancelled
-    action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # approve/reject
+    action: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)  # approve/reject/cc/remind
     comment: Mapped[str] = mapped_column(Text, default="")
+    due_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)      # timeout deadline
+    reminded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)  # last reminder
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

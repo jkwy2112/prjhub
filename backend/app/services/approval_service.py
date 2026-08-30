@@ -116,7 +116,10 @@ def _resolve_assignees(db: Session, ticket: ApprovalTicket, node_id: str) -> lis
     if meta:
         if meta.get("assigneeType") == "runtime":
             value = (ticket.variables or {}).get(f"approver_{node_id}") or []
-            users = list(value)
+            users = list(value) if isinstance(value, list) else [value]
+        elif meta.get("assigneeType") == "form":
+            value = (ticket.variables or {}).get(meta.get("formField")) or []
+            users = list(value) if isinstance(value, list) else [value]
         else:
             users = list(meta.get("users") or [])
     else:
@@ -138,11 +141,15 @@ def _start_variables(definition: ProcessDefinition, ticket_vars: dict) -> dict:
     """Runtime-designed multi-instance nodes need cardinality/pass variables at start."""
     extras: dict = {}
     for tid, meta in (definition.node_meta or {}).items():
-        if meta.get("assigneeType") != "runtime":
+        atype = meta.get("assigneeType")
+        if atype not in ("runtime", "form"):
             continue
-        users = ticket_vars.get(f"approver_{tid}") or []
+        raw = (ticket_vars.get(f"approver_{tid}") if atype == "runtime"
+               else ticket_vars.get(meta.get("formField")))
+        users = list(raw) if isinstance(raw, list) else ([raw] if raw else [])
         if not users:
-            raise HTTPException(400, f"流程要求指定「{meta.get('name') or tid}」的审批人(approver_{tid})")
+            where = f"approver_{tid}" if atype == "runtime" else f"表单字段 {meta.get('formField')}"
+            raise HTTPException(400, f"流程要求指定「{meta.get('name') or tid}」的审批人({where})")
         extras[f"assignee_total_{tid}"] = len(users)
         if meta.get("mode") == "count":
             extras[f"pass_{tid}"] = min(int(meta.get("count") or 1), len(users))
@@ -166,6 +173,17 @@ def _advance_automatic(db: Session, ticket: ApprovalTicket, wf, definition) -> N
             meta = meta_all.get(et.node_id)
             if not meta:
                 continue
+            if meta.get("type") == "TRIGGER":
+                ok, msg = _fire_webhook(meta)
+                db.add(ApprovalTask(
+                    ticket_id=ticket.id, engine_task_id=et.engine_task_id,
+                    node_id=et.node_id, node_name=et.node_name,
+                    assignee_id=None, status="completed", action="trigger",
+                    comment=("已触发: " if ok else "触发失败: ") + msg, finished_at=utcnow(),
+                ))
+                bpmn_engine.complete_user_task(wf, et.engine_task_id, {"trigger_done": True})
+                acted = True
+                break
             if meta.get("type") == "CC":
                 recipients = _resolve_assignees(db, ticket, et.node_id)
                 for uid in recipients:
@@ -209,6 +227,36 @@ def _advance_automatic(db: Session, ticket: ApprovalTicket, wf, definition) -> N
             return
 
 
+def _fire_webhook(meta: dict) -> "tuple[bool, str]":
+    """Best-effort webhook; failures never block the flow."""
+    import httpx
+
+    try:
+        if meta.get("method") == "POST":
+            resp = httpx.post(meta["url"], json={"event": "approval_trigger",
+                                                 "node": meta.get("name")}, timeout=5)
+        else:
+            resp = httpx.get(meta["url"], timeout=5)
+        return resp.status_code < 400, f"HTTP {resp.status_code}"
+    except Exception as exc:
+        return False, str(exc)[:120]
+
+
+def _due_at(meta: Optional[dict]):
+    from datetime import timedelta
+
+    from app.models import utcnow
+
+    timeout = (meta or {}).get("timeout") or {}
+    if not timeout.get("enabled"):
+        return None
+    value = int(timeout.get("value") or 0)
+    if value < 1:
+        return None
+    delta = timedelta(hours=value) if timeout.get("unit") == "H" else timedelta(days=value)
+    return utcnow() + delta
+
+
 def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
     """Mirror engine READY user tasks into ApprovalTask rows; cancel rows no longer ready."""
     ready = bpmn_engine.ready_user_tasks(wf)
@@ -240,14 +288,17 @@ def _sync_tasks(db: Session, ticket: ApprovalTicket, wf) -> None:
                 break
         if assignee is not None:
             used.append(assignee)
-        db.add(ApprovalTask(
+        row = ApprovalTask(
             ticket_id=ticket.id,
             engine_task_id=et.engine_task_id,
             node_id=et.node_id,
             node_name=et.node_name,
             assignee_id=assignee,
             status="pending",
-        ))
+        )
+        row.due_at = _due_at((_definition_of(db, ticket).node_meta or {}).get(et.node_id))
+        db.add(row)
+        db.flush()
 
 
 def _persist(db: Session, ticket: ApprovalTicket, wf) -> None:
@@ -342,7 +393,7 @@ def complete_task(db: Session, approval_task: ApprovalTask, user: User,
     # designed runtime nodes: inject pass_<tid> for count-mode completion expressions
     definition = _definition_of(db, ticket)
     meta = (definition.node_meta or {}).get(approval_task.node_id) if definition else None
-    if meta and meta.get("assigneeType") == "runtime" and meta.get("mode") == "count":
+    if meta and meta.get("assigneeType") in ("runtime", "form") and meta.get("mode") == "count":
         variables[f"pass_{approval_task.node_id}"] = min(int(meta.get("count") or 1), total or 1)
 
     bpmn_engine.complete_user_task(

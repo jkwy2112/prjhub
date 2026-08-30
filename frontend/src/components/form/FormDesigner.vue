@@ -80,7 +80,7 @@
 
 <script setup>
 import { ref } from 'vue'
-import { Plus, Close, Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning } from '@element-plus/icons-vue'
+import { Plus, Close, Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User } from '@element-plus/icons-vue'
 import { FORM_COMPONENTS, newFormItem } from './formComponents'
 import FormRender from './FormRender.vue'
 
@@ -91,12 +91,12 @@ const emit = defineEmits(['changed'])
 
 const selected = ref(null)
 
-const ICONS = { Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning }
+const ICONS = { Edit, Document, Histogram, Money, CircleCheck, Finished, Calendar, Warning, User }
 const iconOf = (name) => ICONS[name] || Edit
 
 const TYPE_LABELS = {
   TextInput: '单行文本', TextareaInput: '多行文本', NumberInput: '数字', AmountInput: '金额',
-  SelectInput: '单选', MultipleSelect: '多选', DateTime: '日期', Description: '说明',
+  SelectInput: '单选', MultipleSelect: '多选', DateTime: '日期', UserPicker: '人员', Description: '说明',
 }
 const typeLabel = (item) => TYPE_LABELS[item.name] || item.name
 const typeTag = (item) => ({ Number: 'warning', Array: 'success', Date: 'info' }[item.valueType] || '')

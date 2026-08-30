@@ -76,6 +76,9 @@ class TicketOut(BaseModel):
 class TicketDetail(TicketOut):
     tasks: List[ApprovalTaskOut] = []
     my_pending_task_id: Optional[int] = None
+    form_items: List[dict] = []
+    form_values: dict = {}
+    my_node_form_perms: dict = {}
 
 
 class MyPendingOut(BaseModel):

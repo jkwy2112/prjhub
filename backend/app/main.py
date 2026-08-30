@@ -50,12 +50,35 @@ def seed() -> None:
         db.close()
 
 
+_scheduler = None
+
+
+def start_reminder() -> None:
+    global _scheduler
+    if not settings.REMINDER_ENABLED or _scheduler is not None:
+        return
+    from apscheduler.schedulers.background import BackgroundScheduler
+
+    from app.services.reminder import remind_overdue
+
+    _scheduler = BackgroundScheduler(daemon=True)
+    _scheduler.add_job(remind_overdue, "interval",
+                       minutes=max(1, settings.REMINDER_INTERVAL_MINUTES), max_instances=1)
+    _scheduler.start()
+    logger.info("reminder scheduler started (every %s min)", settings.REMINDER_INTERVAL_MINUTES)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     run_startup_migrations(engine)
     Base.metadata.create_all(bind=engine)
     seed()
+    start_reminder()
     yield
+    global _scheduler
+    if _scheduler is not None:
+        _scheduler.shutdown(wait=False)
+        _scheduler = None
 
 
 def create_app() -> FastAPI:

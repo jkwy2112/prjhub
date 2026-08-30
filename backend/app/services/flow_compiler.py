@@ -101,6 +101,7 @@ class _Graph:
         self._seq = 0
         self._ap = 0
         self._cc = 0
+        self._trg = 0
         self._gw = 0
 
     def element(self, eid, tag, **attrs):
@@ -120,6 +121,10 @@ class _Graph:
     def cc_id(self):
         self._cc += 1
         return f"ut_cc{self._cc}"
+
+    def trg_id(self):
+        self._trg += 1
+        return f"ut_trg{self._trg}"
 
     def gw_id(self, prefix):
         self._gw += 1
@@ -169,6 +174,9 @@ def _compile_single(g: _Graph, node: dict, meta: dict, depth: int,
         return _compile_approval(g, node, meta, prev_approval)
     if ntype == "CC":
         return _compile_cc(g, node, meta, prev_approval)
+    if ntype == "TRIGGER":
+        e, x, _ = _compile_trigger(g, node, meta)
+        return e, x, prev_approval
     if ntype == "CONDITIONS":
         return _compile_group(g, node, meta, depth, parallel=False, prev_approval=prev_approval)
     if ntype == "CONCURRENTS":
@@ -186,19 +194,27 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
     mode = props.get("mode", "any")
     count = int(props.get("count") or 0)
     nobody = props.get("nobody", "to_admin")
+    form_field = props.get("formField") or ""
+    form_perms = props.get("formPerms") or {}
+    timeout = props.get("timeout") or {}
 
-    if assignee_type not in ("users", "runtime"):
+    if assignee_type not in ("users", "runtime", "form"):
         raise FlowCompileError(f"审批节点「{name}」审批人类型不合法")
     if assignee_type == "users" and not users:
         raise FlowCompileError(f"审批节点「{name}」未指定审批成员")
+    if assignee_type == "form" and not form_field:
+        raise FlowCompileError(f"审批节点「{name}」未选择表单联系人字段")
     if mode not in ("any", "all", "count"):
         raise FlowCompileError(f"审批节点「{name}」签核模式不合法")
     if mode == "count" and count < 1:
         raise FlowCompileError(f"审批节点「{name}」票签数需 ≥ 1")
     if nobody not in ("to_admin", "auto_pass", "auto_reject"):
         raise FlowCompileError(f"审批节点「{name}」审批人为空策略不合法")
+    if timeout.get("enabled") and (int(timeout.get("value") or 0) < 1
+                                    or timeout.get("unit") not in ("H", "D")):
+        raise FlowCompileError(f"审批节点「{name}」超时设置不合法 (单位: 小时/天, 数值 ≥ 1)")
 
-    multi = len(users) > 1 or assignee_type == "runtime"
+    multi = len(users) > 1 or assignee_type in ("runtime", "form")
     if multi:
         if assignee_type == "users":
             cardinality = str(len(users))
@@ -218,7 +234,8 @@ def _approval_meta(g: _Graph, node: dict, meta: dict) -> str:
         g.element(tid, "bpmn:userTask", name=name)
 
     meta[tid] = {"type": "APPROVAL", "name": name, "assigneeType": assignee_type,
-                 "users": users, "mode": mode, "count": count, "nobody": nobody}
+                 "users": users, "mode": mode, "count": count, "nobody": nobody,
+                 "formField": form_field, "formPerms": form_perms, "timeout": timeout}
     node["bpmnId"] = tid  # write back so the launch form can build approver_<tid> variables
     return tid
 
@@ -263,6 +280,23 @@ def _compile_cc(g: _Graph, node: dict, meta: dict, prev_approval: Optional[str])
     meta[tid] = {"type": "CC", "name": name, "assigneeType": assignee_type, "users": users}
     node["bpmnId"] = tid
     return tid, tid, prev_approval
+
+
+def _compile_trigger(g: _Graph, node: dict, meta: dict):
+    """Trigger node -> user task auto-completed by the service layer (webhook call)."""
+    tid = g.trg_id()
+    props = node.get("props") or {}
+    name = str(node.get("name") or "触发器").strip() or "触发器"
+    url = str(props.get("url") or "").strip()
+    method = (props.get("method") or "GET").upper()
+    if not url.startswith(("http://", "https://")):
+        raise FlowCompileError(f"触发器「{name}」的 URL 不合法")
+    if method not in ("GET", "POST"):
+        raise FlowCompileError(f"触发器「{name}」仅支持 GET/POST")
+    g.element(tid, "bpmn:userTask", name=name)
+    meta[tid] = {"type": "TRIGGER", "name": name, "url": url, "method": method}
+    node["bpmnId"] = tid
+    return tid, tid, None
 
 
 def _compile_group(g: _Graph, node: dict, meta: dict, depth: int, parallel: bool,

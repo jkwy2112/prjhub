@@ -135,6 +135,19 @@ def _detail(db: Session, ticket: ApprovalTicket, user: User) -> TicketDetail:
         None,
     )
     detail.my_pending_task_id = pending
+    definition = db.get(ProcessDefinition, ticket.definition_id)
+    if definition and definition.form_items:
+        detail.form_items = definition.form_items
+        detail.form_values = {
+            k: v for k, v in (ticket.variables or {}).items()
+            if any(f.get("id") == k for f in definition.form_items)
+        }
+        # form permissions of MY pending approval node (for perm-filtered display)
+        if pending is not None:
+            my_task = next((t for t in detail.tasks if t.id == pending), None)
+            node_meta = (definition.node_meta or {}).get(my_task.node_id) if my_task else None
+            if node_meta and node_meta.get("type") == "APPROVAL":
+                detail.my_node_form_perms = node_meta.get("formPerms") or {}
     return detail
 
 

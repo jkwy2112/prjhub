@@ -4,6 +4,7 @@ export const VALUE_TYPES = {
   Number: '数字',
   Array: '多选',
   Date: '日期',
+  User: '人员',
 }
 
 export const FORM_COMPONENTS = [
@@ -14,6 +15,7 @@ export const FORM_COMPONENTS = [
   { name: 'SelectInput', title: '单选', valueType: 'String', icon: 'CircleCheck' },
   { name: 'MultipleSelect', title: '多选', valueType: 'Array', icon: 'Finished' },
   { name: 'DateTime', title: '日期', valueType: 'Date', icon: 'Calendar' },
+  { name: 'UserPicker', title: '人员选择', valueType: 'User', icon: 'User' },
   { name: 'Description', title: '说明文字', valueType: null, icon: 'Warning' },
 ]
 
@@ -32,6 +34,9 @@ export function newFormItem(name) {
   if (name === 'Description') {
     item.props.content = '说明文字内容'
   }
+  if (name === 'UserPicker') {
+    item.props.multiple = false
+  }
   return item
 }
 
@@ -45,6 +50,7 @@ export const COMPARE_BY_TYPE = {
     { value: '==', label: '=' }, { value: 'in', label: '属于' },
   ],
   Date: [{ value: '==', label: '于' }],
+  User: [{ value: '==', label: '是' }],
   Array: [{ value: 'in', label: '包含任一' }],
 }
 

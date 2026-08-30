@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     WECOM_CORP_SECRET: str = ""
     WECOM_AGENT_ID: str = ""
 
+    # ---- reminders ----
+    REMINDER_ENABLED: bool = True
+    REMINDER_INTERVAL_MINUTES: int = 10
+
     # ---- Git repos ----
     REPOS_DIR: str = "./repos"
     GIT_INITIAL_BRANCH: str = "main"

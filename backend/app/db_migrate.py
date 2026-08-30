@@ -58,6 +58,13 @@ def ensure_project_workflow_column(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
             logger.info("added projects.workflow_id column")
         with engine.connect() as conn:
+            tcols = [row[1] for row in conn.execute(text("PRAGMA table_info(approval_tasks)")).fetchall()]
+        for col in ("due_at", "reminded_at"):
+            if tcols and col not in tcols:
+                with engine.begin() as conn:
+                    conn.execute(text(f"ALTER TABLE approval_tasks ADD COLUMN {col} DATETIME"))
+                logger.info("added approval_tasks.%s column", col)
+        with engine.connect() as conn:
             cols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
         for col in ("tree", "node_meta"):
             if cols and col not in cols:
@@ -70,6 +77,8 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS tree JSONB"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS node_meta JSONB"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS form_items JSONB"))
+            conn.execute(text("ALTER TABLE approval_tasks ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ"))
+            conn.execute(text("ALTER TABLE approval_tasks ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ"))
 
 
 def run_startup_migrations(engine: Engine) -> None:

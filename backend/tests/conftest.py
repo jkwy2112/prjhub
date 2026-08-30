@@ -29,6 +29,7 @@ else:
     os.environ["REPOS_DIR"] = f"{_TMP}/repos"
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("REMINDER_ENABLED", "false")
 os.environ.setdefault("ADMIN_USERNAME", "admin")
 os.environ.setdefault("ADMIN_PASSWORD", "admin123")
 

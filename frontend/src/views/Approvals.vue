@@ -98,6 +98,10 @@
               </el-select>
               <el-date-picker v-else-if="f.name === 'DateTime'" v-model="formValues[f.id]" type="date"
                 value-format="YYYY-MM-DD" style="width: 100%" />
+              <el-select v-else-if="f.name === 'UserPicker'" v-model="formValues[f.id]" filterable
+                remote :remote-method="searchUsers" clearable placeholder="搜索并选择人员" style="width: 100%">
+                <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+              </el-select>
               <el-alert v-else-if="f.name === 'Description'" type="info" :closable="false" :title="f.props?.content" />
             </el-form-item>
           </template>
@@ -174,7 +178,13 @@
     </el-dialog>
 
     <!-- 详情抽屉 -->
-    <el-drawer v-model="detailVisible" size="520px" :title="detail?.title || '审批详情'">
+    <el-drawer v-model="detailVisible" size="560px">
+      <template #header>
+        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%">
+          <b>{{ detail?.title || '审批详情' }}</b>
+          <el-button size="small" :icon="Printer" @click="printTicket">打印</el-button>
+        </div>
+      </template>
       <template v-if="detail">
         <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
           <el-descriptions-item label="状态">
@@ -184,6 +194,15 @@
           <el-descriptions-item label="金额">￥{{ detail.variables?.amount ?? '-' }}</el-descriptions-item>
           <el-descriptions-item label="发起时间">{{ fmtDateTime(detail.created_at) }}</el-descriptions-item>
         </el-descriptions>
+        <el-card v-if="detail.form_items?.length" shadow="never" style="margin-bottom: 14px">
+          <template #header><b>表单内容</b><span v-if="permHiddenCount" style="font-size: 12px; color: #c0c4cc; margin-left: 8px">({{ permHiddenCount }} 个字段按权限隐藏)</span></template>
+          <div v-for="f in visibleFormItems" :key="f.id" class="form-value-row">
+            <span class="form-value-label">{{ f.title }}</span>
+            <span class="form-value-text">{{ displayValue(f) }}
+              <el-tag v-if="isEditable(f)" size="small" type="warning" style="margin-left: 4px">可编辑</el-tag>
+            </span>
+          </div>
+        </el-card>
         <el-timeline>
           <el-timeline-item v-for="t in detail.tasks" :key="t.id" :timestamp="fmtDateTime(t.created_at)"
             placement="top" :color="timelineColor(t)" :hollow="t.status === 'pending'">

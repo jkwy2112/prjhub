@@ -32,6 +32,9 @@
           <div class="wf-menu-item" @click="insert('CC')">
             <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
           </div>
+          <div class="wf-menu-item" @click="insert('TRIGGER')">
+            <el-icon style="color: #15bc83"><Link /></el-icon>触发器
+          </div>
           <div class="wf-menu-item" @click="insert('CONDITIONS')">
             <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
           </div>
@@ -80,7 +83,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Plus, Close, User, Share, Operation, ArrowLeft, ArrowRight, Stamp, Promotion } from '@element-plus/icons-vue'
+import { Plus, Close, User, Share, Operation, ArrowLeft, ArrowRight, Stamp, Promotion, Link } from '@element-plus/icons-vue'
 
 defineOptions({ name: 'WfNode' })
 
@@ -93,12 +96,12 @@ const hasError = computed(() => !!props.errorNodes?.has?.(props.node))
 const emit = defineEmits(['select', 'self-remove', 'changed'])
 
 const iconMap = {
-  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation, CC: Promotion,
+  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation, CC: Promotion, TRIGGER: Link,
 }
 const icon = computed(() => iconMap[props.node.type] || Stamp)
-const defaultName = computed(() => ({ ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支', CC: '抄送人' }[props.node.type] || ''))
+const defaultName = computed(() => ({ ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支', CC: '抄送人', TRIGGER: '触发器' }[props.node.type] || ''))
 const color = computed(() => ({
-  ROOT: '#409EFF', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff', CC: '#3296fa',
+  ROOT: '#409EFF', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff', CC: '#3296fa', TRIGGER: '#9254de',
 }[props.node.type] || '#909399'))
 const multiUsers = computed(() => (props.node.props?.users?.length || 0) > 1 || props.node.props?.assigneeType === 'runtime')
 
@@ -108,6 +111,9 @@ const summary = computed(() => {
   if (n.type === 'CC') {
     if (n.props?.assigneeType === 'runtime') return '发起时指定'
     return `${(n.props?.users || []).length || '未指定'} 人接收通知`
+  }
+  if (n.type === 'TRIGGER') {
+    return `${n.props?.method || 'GET'} ${(n.props?.url || '未配置').slice(0, 30)}`
   }
   if (n.type === 'APPROVAL') {
     if (n.props?.assigneeType === 'runtime') return `发起时指定 · ${modeLabel(n.props?.mode)}`
@@ -136,6 +142,9 @@ function insert(type) {
 }
 
 function newNode(type) {
+  if (type === 'TRIGGER') {
+    return { type, name: '触发器', props: { url: '', method: 'POST' }, childNode: null }
+  }
   if (type === 'CC') {
     return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
   }

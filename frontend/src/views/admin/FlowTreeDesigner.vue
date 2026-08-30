@@ -47,6 +47,9 @@
                 <div class="wf-menu-item" @click="addFirst('CC')">
                   <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
                 </div>
+                <div class="wf-menu-item" @click="addFirst('TRIGGER')">
+                  <el-icon style="color: #15bc83"><Link /></el-icon>触发器
+                </div>
                 <div class="wf-menu-item" @click="addFirst('CONDITIONS')">
                   <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
                 </div>
@@ -77,6 +80,7 @@
                 <el-radio-group v-model="selected.props.assigneeType">
                   <el-radio-button value="users">固定成员</el-radio-button>
                   <el-radio-button value="runtime">发起时指定</el-radio-button>
+                  <el-radio-button value="form">表单联系人</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
@@ -84,6 +88,13 @@
                   :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
                   <el-option v-for="u in userOptions" :key="u.id" :value="u.id"
                     :label="u.name || u.username" />
+                </el-select>
+              </el-form-item>
+              <el-form-item v-else-if="selected.props.assigneeType === 'form'" label="表单字段">
+                <el-select v-model="selected.props.formField" style="width: 100%"
+                  placeholder="选择人员选择字段">
+                  <el-option v-for="f in userFields" :key="f.id" :value="f.id"
+                    :label="`${f.title} (${f.id})`" />
                 </el-select>
               </el-form-item>
               <el-form-item v-else label="说明">
@@ -112,6 +123,49 @@
                   <el-option value="TO_BEFORE" label="退回上一审批节点重审" />
                 </el-select>
               </el-form-item>
+              <el-form-item label="超时催办">
+                <el-switch v-model="selected.props.timeout.enabled"
+                  @change="ensureTimeout(selected)" />
+                <template v-if="selected.props.timeout.enabled">
+                  <el-input-number v-model="selected.props.timeout.value" :min="1" size="small"
+                    style="margin-left: 8px; width: 90px" />
+                  <el-select v-model="selected.props.timeout.unit" size="small" style="width: 70px">
+                    <el-option value="H" label="小时" /><el-option value="D" label="天" />
+                  </el-select>
+                </template>
+              </el-form-item>
+              <template v-if="formItems.length">
+                <el-divider style="margin: 8px 0">表单字段权限</el-divider>
+                <div v-for="f in formItems.filter((x) => x.name !== 'Description')" :key="f.id"
+                  class="perm-row">
+                  <span class="perm-title">{{ f.title }}</span>
+                  <el-select :model-value="permOf(selected, f.id)" size="small" style="width: 110px"
+                    @update:model-value="(v) => setPerm(selected, f.id, v)">
+                    <el-option value="visible" label="可见(只读)" />
+                    <el-option value="editable" label="可编辑" />
+                    <el-option value="hidden" label="隐藏" />
+                  </el-select>
+                </div>
+              </template>
+            </el-form>
+          </template>
+
+          <!-- TRIGGER -->
+          <template v-else-if="selected.type === 'TRIGGER'">
+            <el-form label-width="90px" size="small">
+              <el-form-item label="节点名称">
+                <el-input v-model="selected.name" maxlength="32" />
+              </el-form-item>
+              <el-form-item label="请求方法">
+                <el-radio-group v-model="selected.props.method">
+                  <el-radio-button value="GET">GET</el-radio-button>
+                  <el-radio-button value="POST">POST</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <el-form-item label="URL">
+                <el-input v-model="selected.props.url" placeholder="https://..." />
+              </el-form-item>
+              <p class="tip">流程到达时自动发起回调(POST 携带事件与节点名), 失败不阻塞流程, 结果记入时间线</p>
             </el-form>
           </template>
 
@@ -125,6 +179,7 @@
                 <el-radio-group v-model="selected.props.assigneeType">
                   <el-radio-button value="users">固定成员</el-radio-button>
                   <el-radio-button value="runtime">发起时指定</el-radio-button>
+                  <el-radio-button value="form">表单联系人</el-radio-button>
                 </el-radio-group>
               </el-form-item>
               <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
@@ -224,7 +279,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning } from '@element-plus/icons-vue'
+import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link } from '@element-plus/icons-vue'
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
 import FormDesigner from '../../components/form/FormDesigner.vue'
@@ -244,6 +299,7 @@ const userOptions = ref([])
 const typeLabel = computed(() => ({
   APPROVAL: '审批节点', CONDITION: '条件分支', BRANCH: '并行分支',
   CONDITIONS: '条件分支组', CONCURRENTS: '并行分支组', ROOT: '发起人', CC: '抄送人',
+  TRIGGER: '触发器',
 }[selected.value?.type] || ''))
 
 const groupsWithCond = computed(() => selected.value?.props?.groups || [])
@@ -251,6 +307,20 @@ const groupsWithCond = computed(() => selected.value?.props?.groups || [])
 // form-field aware condition editing
 import { COMPARE_BY_TYPE } from '../../components/form/formComponents'
 const formFields = computed(() => formItems.value.filter((i) => i.name !== 'Description'))
+const userFields = computed(() => formItems.value.filter((i) => i.name === 'UserPicker'))
+
+function ensureTimeout(node) {
+  if (!node.props.timeout) node.props.timeout = {}
+  if (!node.props.timeout.unit) node.props.timeout.unit = 'H'
+  if (!node.props.timeout.value) node.props.timeout.value = 24
+}
+function permOf(node, fid) {
+  return node.props?.formPerms?.[fid] || 'visible'
+}
+function setPerm(node, fid, value) {
+  if (!node.props.formPerms) node.props.formPerms = {}
+  node.props.formPerms[fid] = value
+}
 const fieldOf = (cond) => formFields.value.find((f) => f.id === cond.field)
 const comparesOf = (cond) => COMPARE_BY_TYPE[cond.valueType || fieldOf(cond)?.valueType || 'Number'] || COMPARE_BY_TYPE.Number
 const fieldOptionsOf = (cond) => fieldOf(cond)?.props?.options || []
@@ -291,6 +361,9 @@ function locateError(e) {
 }
 
 function newNode(type) {
+  if (type === 'TRIGGER') {
+    return { type, name: '触发器', props: { url: '', method: 'POST' }, childNode: null }
+  }
   if (type === 'CC') {
     return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
   }
@@ -364,6 +437,12 @@ function collectErrors(node, errs) {
   }
   if (node.type === 'CC' && node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
     errs.push({ node, message: `「${node.name}」未指定抄送成员` })
+  }
+  if (node.type === 'TRIGGER' && !/^https?:\/\//.test(node.props?.url || '')) {
+    errs.push({ node, message: `「${node.name}」的 URL 不合法` })
+  }
+  if (node.type === 'APPROVAL' && node.props?.assigneeType === 'form' && !node.props.formField) {
+    errs.push({ node, message: `「${node.name}」未选择表单联系人字段` })
   }
   ;(node.branches || []).forEach((b) => {
     if (b.type === 'CONDITION') {
@@ -442,6 +521,8 @@ onMounted(async () => {
   padding: 3px 0; cursor: pointer;
 }
 .wf-error-item:hover { text-decoration: underline; }
+.perm-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
+.perm-title { font-size: 12px; color: #606266; }
 .wf-menu { display: flex; flex-wrap: wrap; gap: 8px; }
 .wf-menu-item { display: flex; align-items: center; gap: 6px; width: 115px; padding: 9px 10px;
   cursor: pointer; background: #f8f9f9; border-radius: 8px; font-size: 13px; color: #606266; }

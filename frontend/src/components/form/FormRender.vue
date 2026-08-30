@@ -35,6 +35,11 @@
             <el-date-picker v-else-if="item.name === 'DateTime'" v-model="model[item.id]"
               type="date" value-format="YYYY-MM-DD" :placeholder="item.props.placeholder || '选择日期'"
               style="width: 100%" />
+            <el-select v-else-if="item.name === 'UserPicker'" v-model="model[item.id]"
+              filterable remote :remote-method="(q) => $emit('search-users', q)"
+              :loading="userLoading" placeholder="搜索并选择人员" style="width: 100%" clearable>
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
           </template>
 
           <!-- design mode: inert previews -->
@@ -48,6 +53,7 @@
             <el-select v-else-if="item.name === 'SelectInput'" :placeholder="(item.props.options || []).join(' / ') || '单选'" disabled style="width: 100%" />
             <el-select v-else-if="item.name === 'MultipleSelect'" :placeholder="(item.props.options || []).join(' / ') || '多选'" disabled multiple style="width: 100%" />
             <el-date-picker v-else-if="item.name === 'DateTime'" placeholder="选择日期" disabled style="width: 100%" />
+            <el-select v-else-if="item.name === 'UserPicker'" placeholder="人员选择" disabled style="width: 100%" />
           </template>
         </div>
       </div>
@@ -61,8 +67,10 @@ const props = defineProps({
   items: { type: Array, default: () => [] },
   mode: { type: String, default: 'fill' }, // fill | design
   model: { type: Object, default: () => ({}) },
+  userOptions: { type: Array, default: () => [] },
+  userLoading: { type: Boolean, default: false },
 })
-defineEmits(['item-click'])
+defineEmits(['item-click', 'search-users'])
 </script>
 
 <style scoped>
