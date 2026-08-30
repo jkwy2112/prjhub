@@ -28,6 +28,12 @@ const DEFAULT_PROPS = {
   placeholder: '',
   required: false,
   enablePrint: true,
+  defaultValue: '',          // 默认值
+  labelWidth: null,          // 标签宽度(空=跟随表单)
+  hiddenLabel: false,        // 隐藏字段标签
+  disabled: false,           // 是否禁用
+  readonly: false,           // 是否只读
+  requiredMsg: '',           // 必填校验提示
 }
 
 export function newFormItem(name) {
@@ -40,14 +46,42 @@ export function newFormItem(name) {
     props: { ...DEFAULT_PROPS },
   }
   switch (name) {
+    case 'TextInput':
+      item.props.maxLength = 100
+      item.props.clearable = true
+      item.props.showWordLimit = false
+      item.props.prepend = ''   // 前缀
+      item.props.append = ''    // 后缀
+      break
+    case 'TextareaInput':
+      item.props.rows = 3
+      item.props.maxLength = 500
+      item.props.showWordLimit = true
+      item.props.autosize = false
+      break
+    case 'NumberInput':
+      item.props.min = null
+      item.props.max = null
+      item.props.step = 1
+      item.props.precision = 0
+      item.props.controlsPosition = 'right'
+      break
     case 'AmountInput':
       item.props.precision = 2
       item.props.showChinese = true
+      item.props.min = 0
       break
     case 'SelectInput':
     case 'MultipleSelect':
       item.props.options = ['选项1', '选项2']
       item.props.expanding = false
+      item.props.clearable = true
+      item.props.filterable = false       // 可搜索
+      item.props.multipleLimit = 0        // 多选数量限制(0不限)
+      break
+    case 'DateTime':
+    case 'DateTimeRange':
+      item.props.clearable = true
       break
     case 'DateTime':
       item.props.format = 'YYYY-MM-DD'

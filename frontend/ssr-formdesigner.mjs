@@ -38,13 +38,13 @@ for (const name of CASES) {
     const html = await renderToString(app)
     const expect = {
       AmountInput: ['保留小数', '展示大写'],
-      DateTime: ['日期格式'],
-      SelectInput: ['选项设置', '选项展开'],
+      DateTime: ['显示格式'],
+      SelectInput: ['选项设置', '选项平铺展开'],
       ImageUpload: ['数量限制', '大小限制'],
       FileUpload: ['文件类型'],
       TableList: ['明细列', '汇总行'],
       UserPicker: ['多选'],
-      TextInput: ['提示文字'],
+      TextInput: ['最大长度', '前缀'],
     }[name] || []
     const missing = expect.filter((k) => !html.includes(k))
     if (missing.length) { console.log(`FAIL ${name}: missing ${missing.join(',')}`); fail++ }

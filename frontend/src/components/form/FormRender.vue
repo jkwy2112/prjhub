@@ -16,30 +16,47 @@
           <!-- fill mode: real inputs bound to model -->
           <template v-if="mode === 'fill'">
             <el-input v-if="item.name === 'TextInput'" v-model="model[item.id]"
-              :placeholder="item.props.placeholder" maxlength="200" />
+              :placeholder="item.props.placeholder" :maxlength="item.props.maxLength || 200"
+              :clearable="item.props.clearable" :show-word-limit="item.props.showWordLimit"
+              :disabled="item.props.disabled" :readonly="item.props.readonly">
+              <template v-if="item.props.prepend" #prepend>{{ item.props.prepend }}</template>
+              <template v-if="item.props.append" #append>{{ item.props.append }}</template>
+            </el-input>
             <el-input v-else-if="item.name === 'TextareaInput'" v-model="model[item.id]"
-              type="textarea" :rows="3" :placeholder="item.props.placeholder" />
+              type="textarea" :rows="item.props.rows || 3"
+              :autosize="item.props.autosize ? { minRows: 2, maxRows: 8 } : false"
+              :maxlength="item.props.maxLength || 500" :show-word-limit="item.props.showWordLimit"
+              :placeholder="item.props.placeholder" :disabled="item.props.disabled"
+              :readonly="item.props.readonly" />
             <el-input-number v-else-if="item.name === 'NumberInput'" v-model="model[item.id]"
-              :placeholder="item.props.placeholder" style="width: 100%" controls-position="right" />
+              :placeholder="item.props.placeholder" style="width: 100%" controls-position="right"
+              :min="item.props.min ?? undefined" :max="item.props.max ?? undefined"
+              :step="item.props.step || 1" :precision="item.props.precision || undefined"
+              :disabled="item.props.disabled" :readonly="item.props.readonly" />
             <template v-else-if="item.name === 'AmountInput'">
               <el-input-number v-model="model[item.id]" :precision="item.props.precision ?? 2"
-                controls-position="right" style="width: 100%" />
+                controls-position="right" style="width: 100%" :min="item.props.min ?? undefined"
+                :disabled="item.props.disabled" />
               <div v-if="item.props.showChinese && model[item.id]" class="amount-cn">
                 大写：{{ amountChinese(model[item.id]) }}
               </div>
             </template>
             <el-select v-else-if="item.name === 'SelectInput'" v-model="model[item.id]"
-              :placeholder="item.props.placeholder || '请选择'" clearable style="width: 100%"
-              :automatic-dropdown="item.props.expanding">
+              :placeholder="item.props.placeholder || '请选择'" :clearable="item.props.clearable"
+              :filterable="item.props.filterable" style="width: 100%"
+              :disabled="item.props.disabled" :automatic-dropdown="item.props.expanding">
               <el-option v-for="o in item.props.options || []" :key="o" :value="o" :label="o" />
             </el-select>
             <el-select v-else-if="item.name === 'MultipleSelect'" v-model="model[item.id]"
-              multiple :placeholder="item.props.placeholder || '请选择'" style="width: 100%">
+              multiple collapse-tags :multiple-limit="item.props.multipleLimit || 0"
+              :placeholder="item.props.placeholder || '请选择'" :clearable="item.props.clearable"
+              :filterable="item.props.filterable" style="width: 100%" :disabled="item.props.disabled">
               <el-option v-for="o in item.props.options || []" :key="o" :value="o" :label="o" />
             </el-select>
             <el-date-picker v-else-if="item.name === 'DateTime'" v-model="model[item.id]"
               :type="dateTypeOf(item.props.format)" :value-format="item.props.format || 'YYYY-MM-DD'"
-              :placeholder="item.props.placeholder || '选择日期'" style="width: 100%" />
+              :placeholder="item.props.placeholder || '选择日期'" :clearable="item.props.clearable"
+              :disabled="item.props.disabled" style="width: 100%" />
             <el-date-picker v-else-if="item.name === 'DateTimeRange'" v-model="model[item.id]"
               type="datetimerange" :value-format="item.props.format || 'YYYY-MM-DD HH:mm'"
               :start-placeholder="item.props.placeholder || '开始'" end-placeholder="结束"
