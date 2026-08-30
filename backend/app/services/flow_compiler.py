@@ -47,7 +47,8 @@ def _cond_expression(cond: dict) -> str:
     op = cond.get("compare", "==")
     value = cond.get("value") or []
 
-    if vtype == "Number":
+    if vtype in ("Number", "User"):
+        # User fields hold numeric user ids — compare numerically too
         if op == "between":
             if len(value) != 2:
                 raise FlowCompileError(f"条件「{field}」的区间比较需要 [下限, 上限] 两个值")
@@ -57,6 +58,13 @@ def _cond_expression(cond: dict) -> str:
         if not value:
             raise FlowCompileError(f"条件「{field}」缺少比较值")
         return f"{field} {op} {_num(value[0], field)}"
+    if vtype == "DateRange":
+        # field value is [start, end]; conditions apply to the START date (ISO strings sort lexicographically)
+        if op not in (">", ">=", "<", "<=", "=="):
+            raise FlowCompileError(f"日期区间字段仅支持 > ≥ < ≤ = (作用于开始时间)")
+        if not value:
+            raise FlowCompileError(f"条件「{field}」缺少比较值")
+        return f"({field} or [''])[0] {op} {_str(value[0])}"
     if vtype == "Array":
         if op != "in":
             raise FlowCompileError("多选字段仅支持「属于」比较")

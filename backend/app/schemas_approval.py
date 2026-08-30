@@ -97,9 +97,13 @@ class TicketDetail(TicketOut):
 class MyPendingOut(BaseModel):
     task_id: int
     node_name: str
+    node_id: str = ""
+    buttons: List[str] = Field(default_factory=lambda: ["agree", "reject"])
+    editable_fields: List[dict] = Field(default_factory=list)
     ticket: TicketOut
 
 
 class ActionIn(BaseModel):
     action: str = Field(pattern=r"^(approve|reject)$")
     comment: str = Field(default="", max_length=2000)
+    form_updates: dict = Field(default_factory=dict)  # editable field overrides from approver

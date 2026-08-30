@@ -128,7 +128,14 @@ export const COMPARE_BY_TYPE = {
   ],
   Date: [{ value: '==', label: '于' }],
   DateRange: [{ value: '==', label: '于' }],
-  User: [{ value: '==', label: '是' }],
+  User: [
+    { value: '==', label: '是' }, { value: '!=', label: '不是' },
+  ],
+  DateRange: [
+    { value: '>=', label: '开始≥' }, { value: '>', label: '开始>' },
+    { value: '<', label: '开始<' }, { value: '<=', label: '开始≤' },
+    { value: '==', label: '开始=' },
+  ],
   Array: [{ value: 'in', label: '包含任一' }],
 }
 

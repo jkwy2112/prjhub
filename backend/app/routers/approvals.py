@@ -122,14 +122,18 @@ def my_pending(db: Session = Depends(get_db), user: User = Depends(get_current_u
         .order_by(ApprovalTask.id)
         .all()
     )
-    return [
-        MyPendingOut(
+    out = []
+    for row, ticket in rows:
+        cfg = approval_service.node_launch_config(db, ticket.definition_id, row.node_id)
+        out.append(MyPendingOut(
             task_id=row.id,
             node_name=row.node_name,
+            node_id=row.node_id or "",
+            buttons=cfg["buttons"],
+            editable_fields=cfg["editable_fields"],
             ticket=_ticket_out(db, ticket),
-        )
-        for row, ticket in rows
-    ]
+        ))
+    return out
 
 
 @router.get("/my-submitted", response_model=List[TicketDetail], summary="我发起的审批")
@@ -193,7 +197,8 @@ def complete_approval_task(approval_task_id: int, body: ActionIn,
     row = db.get(ApprovalTask, approval_task_id)
     if not row:
         raise HTTPException(404, "审批任务不存在")
-    ticket = approval_service.complete_task(db, row, user, body.action, body.comment)
+    ticket = approval_service.complete_task(db, row, user, body.action, body.comment,
+                                             form_updates=body.form_updates)
     return _detail(db, ticket, user)
 
 

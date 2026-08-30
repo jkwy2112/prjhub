@@ -280,6 +280,37 @@ def _advance_automatic(db: Session, ticket: ApprovalTicket, wf, definition) -> N
             return
 
 
+def node_launch_config(db: Session, definition_id: int, node_id: str) -> dict:
+    """Return {buttons, editable_fields} configured on a tree approval node."""
+    definition = db.get(ProcessDefinition, definition_id)
+    if not definition or not definition.tree:
+        return {"buttons": ["agree", "reject"], "editable_fields": []}
+    found = {}
+
+    def walk(n):
+        if not n or found:
+            return
+        if n.get("type") == "APPROVAL" and n.get("bpmnId") == node_id:
+            found.update(n)
+            return
+        for b in n.get("branches") or []:
+            walk(b.get("childNode"))
+        walk(n.get("childNode"))
+
+    walk(definition.tree.get("childNode"))
+    if not found:
+        return {"buttons": ["agree", "reject"], "editable_fields": []}
+    buttons = (found.get("props") or {}).get("buttons") or ["agree", "reject"]
+    perms = (found.get("props") or {}).get("formPerms") or {}
+    editable = [
+        {"id": f.get("id"), "title": f.get("title"), "name": f.get("name"),
+         "valueType": f.get("valueType"), "props": f.get("props") or {}}
+        for f in (definition.form_items or [])
+        if perms.get(f.get("id")) == "editable"
+    ]
+    return {"buttons": buttons, "editable_fields": editable}
+
+
 def _fire_webhook(meta: dict) -> "tuple[bool, str]":
     """Best-effort webhook; failures never block the flow."""
     import httpx
@@ -424,7 +455,7 @@ def create_ticket(db: Session, definition_key: str, title: str, submitted_by: in
 
 
 def complete_task(db: Session, approval_task: ApprovalTask, user: User,
-                  action: str, comment: str = "") -> ApprovalTicket:
+                  action: str, comment: str = "", form_updates: Optional[dict] = None) -> ApprovalTicket:
     if approval_task.status != "pending":
         raise HTTPException(400, "该审批任务已处理")
     if approval_task.assignee_id != user.id and not user.is_superuser:
@@ -453,6 +484,17 @@ def complete_task(db: Session, approval_task: ApprovalTask, user: User,
     # designed runtime nodes: inject pass_<tid> for count-mode completion expressions
     definition = _definition_of(db, ticket)
     meta = (definition.node_meta or {}).get(approval_task.node_id) if definition else None
+    # approver-edited form fields (editable perm): override ticket vars + flow into engine data
+    if form_updates:
+        allowed_edit = set()
+        for fid, perm in ((meta or {}).get("formPerms") or {}).items():
+            if perm == "editable":
+                allowed_edit.add(fid)
+        for k, v in form_updates.items():
+            if k in allowed_edit:
+                variables[k] = v
+                ticket.variables = {**(ticket.variables or {}), k: v}
+
     if meta and meta.get("assigneeType") in ("runtime", "form") and meta.get("mode") == "count":
         variables[f"pass_{approval_task.node_id}"] = min(int(meta.get("count") or 1), total or 1)
 

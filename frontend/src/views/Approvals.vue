@@ -51,10 +51,12 @@
       <el-table-column label="提交时间" width="140">
         <template #default="{ row }">{{ fmtSubmit(row.ticket.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="200" fixed="right">
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <el-button type="success" size="small" @click="act(row.task_id, 'approve')">同意</el-button>
-          <el-button type="danger" plain size="small" @click="act(row.task_id, 'reject')">驳回</el-button>
+          <el-button v-if="(row.buttons || ['agree', 'reject']).includes('agree')"
+            type="success" size="small" @click="openAct(row, 'approve')">同意</el-button>
+          <el-button v-if="(row.buttons || []).includes('reject')"
+            type="danger" plain size="small" @click="openAct(row, 'reject')">驳回</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -213,6 +215,42 @@
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
         <el-button type="primary" :loading="creating" @click="submit">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 审批处理对话框 -->
+    <el-dialog v-model="actVisible" :title="actForm.action === 'approve' ? '同意审批' : '驳回审批'"
+      width="560px" append-to-body>
+      <div v-if="actRow" class="act-head">
+        <b>{{ actRow.ticket.title }}</b>
+        <span class="act-node">当前环节: {{ actRow.node_name }}</span>
+      </div>
+      <el-form label-position="top" v-if="actRow">
+        <el-form-item v-for="f in actRow.editable_fields || []" :key="f.id"
+          :label="f.title + '（可修改）'" :required="f.props?.required">
+          <el-input-number v-if="f.valueType === 'Number'" v-model="actForm.updates[f.id]"
+            style="width: 220px" controls-position="right" />
+          <el-input v-else-if="f.name === 'TextareaInput'" v-model="actForm.updates[f.id]"
+            type="textarea" :rows="2" />
+          <el-select v-else-if="f.name === 'SelectInput'" v-model="actForm.updates[f.id]"
+            clearable style="width: 100%">
+            <el-option v-for="o in f.props?.options || []" :key="o" :value="o" :label="o" />
+          </el-select>
+          <el-date-picker v-else-if="f.valueType === 'Date'" v-model="actForm.updates[f.id]"
+            type="date" value-format="YYYY-MM-DD" style="width: 100%" />
+          <el-input v-else v-model="actForm.updates[f.id]" />
+        </el-form-item>
+        <el-form-item label="审批意见">
+          <el-input v-model="actForm.comment" type="textarea" :rows="2" maxlength="2000"
+            placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="actVisible = false">取消</el-button>
+        <el-button :type="actForm.action === 'approve' ? 'success' : 'danger'"
+          :loading="acting" @click="submitAct">
+          {{ actForm.action === 'approve' ? '确 定 同 意' : '确 定 驳 回' }}
+        </el-button>
       </template>
     </el-dialog>
 
@@ -498,8 +536,18 @@ function printTicket() {
     <tr><td>${t.node_name}</td><td>${t.assignee_id ? (userMap[t.assignee_id] || t.assignee_id) : '系统'}</td>
     <td>${ACTION[t.action] || (t.status === 'pending' ? '待处理' : t.status === 'cancelled' ? '已取消' : '已处理')}</td>
     <td>${(t.comment || '').replace(/</g, '&lt;')}</td><td>${t.finished_at ? fmtDateTime(t.finished_at) : '—'}</td></tr>`).join('')
-  const formRows = (d.form_items || []).filter((f) => f.name !== 'Description').map((f) => `
+  const formRows = (d.form_items || []).filter((f) => f.name !== 'Description'
+    && f.name !== 'TableList' && f.name !== 'ImageUpload' && f.name !== 'FileUpload').map((f) => `
     <tr><td>${f.title}</td><td>${displayValue(f)}</td></tr>`).join('')
+  const tableHtml = (d.form_items || []).filter((f) => f.name === 'TableList').map((f) => {
+    const cols = f.props?.columns || []
+    const rows = (d.form_values?.[f.id] || []).map((r) =>
+      `<tr>${cols.map((c) => `<td>${r[c.id] ?? ''}</td>`).join('')}</tr>`).join('')
+    return `<h4>${f.title}</h4><table><tr>${cols.map((c) => `<th>${c.title}</th>`).join('')}</tr>${rows}</table>`
+  }).join('')
+  const imgHtml = (d.form_items || []).filter((f) => f.name === 'ImageUpload' && (d.form_values?.[f.id] || []).length).map((f) =>
+    `<h4>${f.title}</h4><div>${(d.form_values[f.id] || []).map((u) =>
+      `<img src="${u}" style="width:120px;height:120px;object-fit:cover;margin:4px;border:1px solid #eee;border-radius:4px" />`).join('')}</div>`).join('')
   const win = window.open('', '_blank')
   win.document.write(`<html><head><title>${d.title} - 审批单</title>
     <style>body{font-family:'PingFang SC',sans-serif;padding:24px;color:#303133}
@@ -512,6 +560,8 @@ function printTicket() {
     <div class="no">审批编号: ${fmtTicketNo(d.ticket_no)}</div>
     <div class="meta">提交时间: ${fmtSubmit(d.created_at)} | 所在部门: ${submitterDept.value} | 状态: ${statusMeta(d.status).label}</div>
     ${formRows ? `<table><tr><th style="width:140px">表单字段</th><th>内容</th></tr>${formRows}</table>` : ''}
+    ${tableHtml}
+    ${imgHtml}
     <table><tr><th>环节</th><th>处理人</th><th>动作</th><th>意见</th><th>时间</th></tr>${rows}</table>
     </body></html>`)
   win.document.close()
@@ -661,18 +711,38 @@ async function submit() {
   }
 }
 
-async function act(taskId, action) {
-  const word = action === 'approve' ? '同意' : '驳回'
-  let comment = ''
+const actVisible = ref(false)
+const actRow = ref(null)
+const acting = ref(false)
+const actForm = reactive({ action: 'approve', comment: '', updates: {} })
+
+function openAct(row, action) {
+  actRow.value = row
+  actForm.action = action
+  actForm.comment = ''
+  actForm.updates = {}
+  // prefill editable fields with current ticket values
+  for (const f of row.editable_fields || []) {
+    actForm.updates[f.id] = row.ticket?.form_values?.[f.id] ?? (f.valueType === 'Number' ? 0 : '')
+  }
+  actVisible.value = true
+}
+
+async function submitAct() {
+  acting.value = true
+  const word = actForm.action === 'approve' ? '同意' : '驳回'
   try {
-    const { value } = await ElMessageBox.prompt(`确认${word}该审批单?`, word + '审批', {
-      inputPlaceholder: '审批意见(可留空)', inputValue: '',
+    const { data } = await api.post(`/approvals/tasks/${actRow.value.task_id}/complete`, {
+      action: actForm.action,
+      comment: actForm.comment,
+      form_updates: actForm.updates,
     })
-    comment = value || ''
-  } catch { return }
-  const { data } = await api.post(`/approvals/tasks/${taskId}/complete`, { action, comment })
-  ElMessage.success(data.status === 'running' ? `已${word}, 流转至下一环节` : `已${word}, 审批单${statusMeta(data.status).label}`)
-  load()
+    ElMessage.success(data.status === 'running' ? `已${word}, 流转至下一环节` : `已${word}, 审批单${statusMeta(data.status).label}`)
+    actVisible.value = false
+    load()
+  } catch { /* interceptor */ } finally {
+    acting.value = false
+  }
 }
 
 async function cancel(id) {
@@ -718,6 +788,9 @@ onMounted(load)
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
 .tpl-go { color: var(--ph-text-disabled); transition: all .15s; }
 .tpl-card:hover .tpl-go { color: var(--ph-primary); transform: translateX(3px); }
+.act-head { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; margin-bottom: 12px;
+  background: var(--ph-fill-light); border-radius: var(--ph-radius-md); }
+.act-node { font-size: 12px; color: var(--ph-text-secondary); }
 .launch-tpl { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 14px;
   background: var(--ph-fill-light); border-radius: var(--ph-radius-md); }
 .form-tip { font-size: 12px; color: var(--ph-text-disabled); margin-left: 10px; }
