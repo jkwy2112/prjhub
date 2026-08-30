@@ -29,6 +29,7 @@ def authenticate_ldap(db: Session, username: str, password: str) -> Optional[Use
         external_id=result.dn,
         name=result.name,
         email=result.email,
+        dept=result.dept,
     )
     return user if user.is_active else None
 
@@ -50,7 +51,7 @@ def authenticate_wecom(db: Session, code: str) -> Optional[User]:
 
 
 def _provision(db: Session, auth_type: AuthType, username: str, external_id: str,
-               name: str = "", email: str = "", avatar: str = "") -> User:
+               name: str = "", email: str = "", avatar: str = "", dept: str = "") -> User:
     """First login from external IdP creates the account; afterwards syncs profile."""
     user = db.query(User).filter(User.username == username).first()
     if user is None:
@@ -58,6 +59,7 @@ def _provision(db: Session, auth_type: AuthType, username: str, external_id: str
             username=username,
             name=name or username,
             email=email,
+            dept=dept,
             avatar=avatar,
             auth_type=auth_type,
             external_id=external_id,
@@ -77,6 +79,8 @@ def _provision(db: Session, auth_type: AuthType, username: str, external_id: str
             user.email, changed = email, True
         if avatar and not user.avatar:
             user.avatar, changed = avatar, True
+        if dept and not user.dept:
+            user.dept, changed = dept, True
         if changed:
             db.commit()
     db.refresh(user)

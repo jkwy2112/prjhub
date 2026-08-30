@@ -9,10 +9,11 @@ logger = logging.getLogger(__name__)
 
 
 class LDAPAuthResult:
-    def __init__(self, username: str, name: str, email: str, dn: str):
+    def __init__(self, username: str, name: str, email: str, dn: str, dept: str = ""):
         self.username = username
         self.name = name
         self.email = email
+        self.dept = dept
         self.dn = dn
 
 
@@ -74,10 +75,20 @@ def authenticate(db, username: str, password: str) -> Optional[LDAPAuthResult]:
             except Exception:
                 return ""
 
+        # dept: prefer configured attr, fallback to first OU of the DN
+        dept = ""
+        attr_dept = cfg.get("attr_dept")
+        if attr_dept and entry[attr_dept].value:
+            dept = str(entry[attr_dept].value)
+        else:
+            parts = entry.entry_dn.split(",")
+            ous = [p.split("=", 1)[1] for p in parts if p.strip().lower().startswith("ou=")]
+            dept = ous[-1] if ous else ""
         return LDAPAuthResult(
             username=_norm(entry[cfg.get("attr_username") or "uid"].value or username),
             name=val(cfg.get("attr_display_name") or "cn"),
             email=val(cfg.get("attr_email") or "mail"),
+            dept=dept,
             dn=entry.entry_dn,
         )
     except LDAPException as exc:

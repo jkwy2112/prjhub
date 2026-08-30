@@ -24,6 +24,7 @@
           </div>
         </template>
       </el-table-column>
+      <el-table-column prop="dept" label="部门" width="120" show-overflow-tooltip />
       <el-table-column prop="email" label="邮箱" min-width="160" show-overflow-tooltip />
       <el-table-column label="来源" width="100">
         <template #default="{ row }">
@@ -59,6 +60,7 @@
         </el-form-item>
         <el-form-item label="姓名"><el-input v-model="createForm.name" maxlength="128" /></el-form-item>
         <el-form-item label="邮箱"><el-input v-model="createForm.email" maxlength="255" /></el-form-item>
+        <el-form-item label="部门"><el-input v-model="createForm.dept" maxlength="128" placeholder="如: 技术部" /></el-form-item>
         <el-form-item label="初始密码" required>
           <el-input v-model="createForm.password" type="password" show-password placeholder="至少 6 位" />
         </el-form-item>
@@ -75,6 +77,7 @@
     <el-dialog v-model="editDialog" :title="`编辑用户 ${editing?.username || ''}`" width="480px">
       <el-form :model="editForm" label-width="110px">
         <el-form-item label="姓名"><el-input v-model="editForm.name" maxlength="128" /></el-form-item>
+        <el-form-item label="部门"><el-input v-model="editForm.dept" maxlength="128" /></el-form-item>
         <el-form-item label="邮箱"><el-input v-model="editForm.email" maxlength="255" /></el-form-item>
         <el-form-item label="重置密码">
           <el-input v-model="editForm.password" type="password" show-password placeholder="留空则不修改" />
@@ -108,10 +111,10 @@ const query = ref('')
 const authFilter = ref('')
 
 const createDialog = ref(false)
-const createForm = reactive({ username: '', name: '', email: '', password: '', is_superuser: false })
+const createForm = reactive({ username: '', name: '', email: '', dept: '', password: '', is_superuser: false })
 const editDialog = ref(false)
 const editing = ref(null)
-const editForm = reactive({ name: '', email: '', password: '', is_superuser: false })
+const editForm = reactive({ name: '', dept: '', email: '', password: '', is_superuser: false })
 
 async function loadUsers() {
   loading.value = true
@@ -127,7 +130,7 @@ async function loadUsers() {
 }
 
 function openCreate() {
-  Object.assign(createForm, { username: '', name: '', email: '', password: '', is_superuser: false })
+  Object.assign(createForm, { username: '', name: '', email: '', dept: '', password: '', is_superuser: false })
   createDialog.value = true
 }
 
@@ -148,13 +151,13 @@ async function createUser() {
 
 function openEdit(row) {
   editing.value = row
-  Object.assign(editForm, { name: row.name, email: row.email, password: '', is_superuser: row.is_superuser })
+  Object.assign(editForm, { name: row.name, dept: row.dept || '', email: row.email, password: '', is_superuser: row.is_superuser })
   editDialog.value = true
 }
 
 async function saveUser() {
   saving.value = true
-  const payload = { name: editForm.name, email: editForm.email }
+  const payload = { name: editForm.name, dept: editForm.dept, email: editForm.email }
   if (editForm.password) {
     if (editForm.password.length < 6) {
       saving.value = false

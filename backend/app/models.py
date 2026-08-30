@@ -145,6 +145,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(256), default="")
     name: Mapped[str] = mapped_column(String(128), default="")
+    dept: Mapped[str] = mapped_column(String(128), default="")
     email: Mapped[str] = mapped_column(String(255), default="", index=True)
     avatar: Mapped[str] = mapped_column(String(512), default="")
     auth_type: Mapped[AuthType] = mapped_column(Enum(AuthType), default=AuthType.local)

@@ -30,6 +30,7 @@ class AdminUserCreate(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     name: Optional[str] = Field(default=None, max_length=128)
+    dept: Optional[str] = Field(default=None, max_length=128)
     email: Optional[str] = Field(default=None, max_length=255)
     password: Optional[str] = Field(default=None, min_length=6, max_length=128)
     is_active: Optional[bool] = None

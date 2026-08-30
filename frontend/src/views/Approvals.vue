@@ -51,9 +51,6 @@
           <el-tag size="small" :type="statusMeta(row.status).type">{{ statusMeta(row.status).label }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="流程" width="200">
-        <template #default="{ row }">{{ row.definition_name || '通用审批流' }} v{{ row.definition_version }}</template>
-      </el-table-column>
       <el-table-column v-if="submittedAmountLabel" :label="submittedAmountLabel" width="110">
         <template #default="{ row }">{{ amountText(row) }}</template>
       </el-table-column>
@@ -211,27 +208,30 @@
     <el-drawer v-model="detailVisible" size="560px">
       <template #header>
         <div style="display: flex; align-items: center; justify-content: space-between; width: 100%">
-          <b>{{ detail?.title || '审批详情' }}</b>
+          <b class="tk-title">{{ ticketHeadline }}</b>
           <el-button size="small" :icon="Printer" @click="printTicket">打印</el-button>
         </div>
       </template>
       <template v-if="detail">
-        <div class="tk-head">
-          <div class="tk-no">
-            <span class="tk-no-label">审批编号</span>
-            <b class="tk-no-value">{{ detail.ticket_no || String(detail.id).padStart(14, '0') }}</b>
-            <el-icon class="tk-copy" title="复制" @click="copyNo(detail.ticket_no)"><CopyDocument /></el-icon>
+        <div class="tk-info">
+          <div class="tk-row">
+            <span class="tk-k">审批编号</span>
+            <span class="tk-v mono">{{ detail.ticket_no || String(detail.id).padStart(14, '0') }}
+              <el-icon class="tk-copy" title="复制" @click="copyNo(detail.ticket_no)"><CopyDocument /></el-icon>
+            </span>
           </div>
-          <div class="tk-meta">
-            <span class="tk-meta-item">
-              <span class="tk-k">状态</span>
+          <div class="tk-row">
+            <span class="tk-k">提交时间</span>
+            <span class="tk-v">{{ fmtSubmit(detail.created_at) }}</span>
+          </div>
+          <div class="tk-row">
+            <span class="tk-k">所在部门</span>
+            <span class="tk-v">{{ submitterDept }}</span>
+          </div>
+          <div class="tk-row">
+            <span class="tk-k">状态</span>
+            <span class="tk-v">
               <el-tag size="small" :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
-            </span>
-            <span class="tk-meta-item">
-              <span class="tk-k">流程</span>{{ detail.definition_name || '-' }} v{{ detail.definition_version }}
-            </span>
-            <span class="tk-meta-item">
-              <span class="tk-k">提交时间</span>{{ fmtSubmit(detail.created_at) }}
             </span>
           </div>
         </div>
@@ -384,6 +384,26 @@ function statusMeta(s) {
 }
 
 
+const ticketHeadline = computed(() => {
+  const d = detail.value
+  if (!d) return '审批详情'
+  const who = userMap[d.submitted_by] || d.submitted_by || ''
+  const t = d.title || ''
+  // title like "vpn申请" → "user01的vpn申请"; already contains 的 → as-is
+  return t.includes('的') ? t : `${who}的${t}`
+})
+
+const submitterDept = ref('-')
+watch(() => detail.value?.submitted_by, async (uid) => {
+  submitterDept.value = '-'
+  if (!uid) return
+  try {
+    const { data } = await api.get('/users', { params: { q: String(uid) } })
+    const u = data.find((x) => x.id === uid)
+    submitterDept.value = u?.dept || '未设置'
+  } catch { /* ignore */ }
+}, { immediate: true })
+
 function fmtSubmit(v) {
   if (!v) return '-'
   const d = new Date(v)
@@ -466,9 +486,9 @@ function printTicket() {
     table{width:100%;border-collapse:collapse;margin-bottom:16px}
     td,th{border:1px solid #dcdfe6;padding:6px 10px;font-size:13px;text-align:left}
     th{background:#f5f7fa}</style></head><body>
-    <h2>${d.title}</h2>
+    <h2>${(() => d.title.includes('的') ? d.title : `${userMap[d.submitted_by] || d.submitted_by}的${d.title}`)()}</h2>
     <div class="no">审批编号: ${d.ticket_no || String(d.id).padStart(14, '0')}</div>
-    <div class="meta">流程: ${d.definition_name || ''} v${d.definition_version} | 状态: ${statusMeta(d.status).label} | 提交时间: ${fmtSubmit(d.created_at)}</div>
+    <div class="meta">提交时间: ${fmtSubmit(d.created_at)} | 所在部门: ${submitterDept.value} | 状态: ${statusMeta(d.status).label}</div>
     ${formRows ? `<table><tr><th style="width:140px">表单字段</th><th>内容</th></tr>${formRows}</table>` : ''}
     <table><tr><th>环节</th><th>处理人</th><th>动作</th><th>意见</th><th>时间</th></tr>${rows}</table>
     </body></html>`)
@@ -632,19 +652,17 @@ onMounted(load)
 .form-tip { font-size: 12px; color: var(--ph-text-disabled); margin-left: 10px; }
 .tno { font-family: monospace; color: var(--ph-text-secondary); font-size: 12px; letter-spacing: .5px; }
 
-/* ===== ticket head ===== */
-.tk-head { background: var(--ph-primary-light-9); border: 1px solid var(--ph-primary-light-7);
-  border-radius: var(--ph-radius-lg); padding: var(--ph-space-3) var(--ph-space-4); margin-bottom: var(--ph-space-4); }
-.tk-no { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-.tk-no-label { font-size: var(--ph-font-xs); color: var(--ph-text-secondary); }
-.tk-no-value { font-size: 16px; letter-spacing: 1px; color: var(--ph-text-primary);
-  font-family: 'SF Mono', Menlo, Consolas, monospace; }
+/* ===== ticket info (申请单式) ===== */
+.tk-title { font-size: var(--ph-font-md); color: var(--ph-text-primary); }
+.tk-info { background: var(--ph-fill-light); border-radius: var(--ph-radius-lg);
+  padding: var(--ph-space-2) var(--ph-space-4); margin-bottom: var(--ph-space-4); }
+.tk-row { display: flex; align-items: center; padding: 6px 0; }
+.tk-row + .tk-row { border-top: 1px dashed var(--ph-border-lighter); }
+.tk-k { width: 84px; flex-shrink: 0; color: var(--ph-text-secondary); font-size: var(--ph-font-xs); }
+.tk-v { color: var(--ph-text-primary); font-size: var(--ph-font-sm); display: inline-flex; align-items: center; gap: 6px; }
+.tk-v.mono { font-family: 'SF Mono', Menlo, Consolas, monospace; letter-spacing: .5px; }
 .tk-copy { cursor: pointer; color: var(--ph-text-secondary); font-size: 14px; }
 .tk-copy:hover { color: var(--ph-primary); }
-.tk-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: var(--ph-font-xs);
-  color: var(--ph-text-regular); align-items: center; }
-.tk-meta-item { display: inline-flex; align-items: center; gap: 5px; }
-.tk-k { color: var(--ph-text-secondary); }
 
 /* ===== form content ===== */
 .tk-form { background: var(--ph-fill-blank, #fff); border: 1px solid var(--ph-border-lighter);
@@ -653,10 +671,10 @@ onMounted(load)
   padding: var(--ph-space-3) var(--ph-space-4); border-bottom: 1px solid var(--ph-border-lighter);
   background: var(--ph-fill-light); }
 .tk-form-tip { font-weight: 400; color: var(--ph-text-disabled); font-size: var(--ph-font-xs); }
-.tk-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
-.tk-cell { display: flex; padding: 10px var(--ph-space-4); border-bottom: 1px dashed var(--ph-border-lighter);
+.tk-form-grid { display: flex; flex-direction: column; }
+.tk-cell { display: flex; padding: 9px var(--ph-space-4); border-bottom: 1px dashed var(--ph-border-lighter);
   align-items: baseline; }
-.tk-cell:nth-child(odd) { border-right: 1px dashed var(--ph-border-lighter); }
+.tk-cell:last-child { border-bottom: none; }
 .tk-cell-k { width: 96px; flex-shrink: 0; color: var(--ph-text-secondary); font-size: var(--ph-font-xs); }
 .tk-cell-v { color: var(--ph-text-primary); font-size: var(--ph-font-sm); word-break: break-all; flex: 1; }
 .tk-cell-v.is-money { color: var(--ph-danger); font-weight: 700; font-variant-numeric: tabular-nums; }

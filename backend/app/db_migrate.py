@@ -58,6 +58,12 @@ def ensure_project_workflow_column(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
             logger.info("added projects.workflow_id column")
         with engine.connect() as conn:
+            ucols = [row[1] for row in conn.execute(text("PRAGMA table_info(users)")).fetchall()]
+        if ucols and "dept" not in ucols:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE users ADD COLUMN dept VARCHAR(128) DEFAULT ''"))
+            logger.info("added users.dept column")
+        with engine.connect() as conn:
             tcols2 = [row[1] for row in conn.execute(text("PRAGMA table_info(approval_tickets)")).fetchall()]
         if tcols2 and "ticket_no" not in tcols2:
             with engine.begin() as conn:
@@ -90,6 +96,7 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS remark VARCHAR(500) DEFAULT ''"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS logo JSONB"))
             conn.execute(text("ALTER TABLE approval_tickets ADD COLUMN IF NOT EXISTS ticket_no VARCHAR(32) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS dept VARCHAR(128) DEFAULT ''"))
 
 def run_startup_migrations(engine: Engine) -> None:
     rebuild_tasks_status_column(engine)

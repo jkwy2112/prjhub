@@ -33,6 +33,7 @@ class UserOut(BaseModel):
     id: int
     username: str
     name: str
+    dept: str = ""
     email: str
     avatar: str
     auth_type: AuthType
