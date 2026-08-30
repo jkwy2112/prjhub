@@ -78,235 +78,239 @@
         </div>
       </div>
 
-      <div class="wf-props" v-if="tab === 'process'">
-        <el-empty v-if="!selected" description="点击节点配置属性" :image-size="70" />
-        <template v-else>
-          <h4>{{ typeLabel }}</h4>
+      <el-drawer v-model="propsVisible" :title="drawerTitle" size="560px" append-to-body
+        :with-header="true" class="wf-props-drawer">
+        <template #header>
+          <div class="dp-header">
+            <span class="dp-badge" :style="{ background: 'var(--ph-node-' + nodeColorKey(selected) + ')' }">
+              <el-icon :size="13" style="color:#fff"><component :is="iconOf(nodeIconKey(selected))" /></el-icon>
+            </span>
+            <el-input v-if="selected" v-model="selected.name" size="small" style="width: 220px"
+              maxlength="32" placeholder="节点名称" />
+            <span v-if="selected?.bpmnId" class="dp-id">{{ selected.bpmnId }}</span>
+          </div>
+        </template>
 
-          <!-- approval -->
-          <template v-if="selected.type === 'APPROVAL'">
-            <el-form label-width="90px" size="small">
-              <el-form-item label="节点名称">
-                <el-input v-model="selected.name" maxlength="32" />
-              </el-form-item>
-              <el-form-item label="审批人">
-                <el-radio-group v-model="selected.props.assigneeType">
-                  <el-radio-button value="users">固定成员</el-radio-button>
-                  <el-radio-button value="runtime">发起时指定</el-radio-button>
-                  <el-radio-button value="form">表单联系人</el-radio-button>
-                  <el-radio-button value="self">发起人自己</el-radio-button>
+        <template v-if="selected?.type === 'APPROVAL'">
+          <el-tabs v-model="apTab" class="dp-tabs">
+            <el-tab-pane label="审批人设置" name="who">
+              <section class="dp-sec">
+                <h3 class="dp-h3">👤 选择审批对象</h3>
+                <div class="dp-radio-grid">
+                  <div v-for="t in ASSIGNEE_TYPES" :key="t.value" class="dp-type"
+                    :class="{ active: selected.props.assigneeType === t.value }"
+                    @click="selected.props.assigneeType = t.value">
+                    <el-icon><component :is="iconOf(t.icon)" /></el-icon>
+                    <span>{{ t.label }}</span>
+                  </div>
+                </div>
+
+                <template v-if="selected.props.assigneeType === 'users'">
+                  <el-select v-model="selected.props.users" multiple filterable remote
+                    :remote-method="searchUsers" placeholder="搜索并添加成员" style="width: 100%">
+                    <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+                  </el-select>
+                </template>
+                <template v-else-if="selected.props.assigneeType === 'form'">
+                  <el-select v-model="selected.props.formField" style="width: 100%" placeholder="选择人员选择字段">
+                    <el-option v-for="f in userFields" :key="f.id" :value="f.id" :label="`${f.title} (${f.id})`" />
+                  </el-select>
+                </template>
+                <el-alert v-else-if="selected.props.assigneeType === 'self'" type="info" :closable="false"
+                  title="系统将自动选择流程发起人自己作为审批人" />
+                <el-alert v-else-if="selected.props.assigneeType === 'runtime'" type="info" :closable="false"
+                  title="用户可以在流程发起时选择该节点的审批人" />
+              </section>
+
+              <section class="dp-sec">
+                <h3 class="dp-h3">✍ 多人审批时采用的审批方式</h3>
+                <el-radio-group v-model="selected.props.mode" class="dp-radio-stack">
+                  <el-radio value="any">或签（只需一名审批人同意即可）</el-radio>
+                  <el-radio value="all">会签（需所有审批人同意，不限顺序）</el-radio>
+                  <el-radio v-if="selected.props.assigneeType === 'users'" value="next">顺序会签（按成员顺序依次审批）</el-radio>
+                  <el-radio value="count">票签（满足 N 票即通过）</el-radio>
                 </el-radio-group>
-              </el-form-item>
-              <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
-                <el-select v-model="selected.props.users" multiple filterable remote
-                  :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
-                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id"
-                    :label="u.name || u.username" />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-else-if="selected.props.assigneeType === 'form'" label="表单字段">
-                <el-select v-model="selected.props.formField" style="width: 100%"
-                  placeholder="选择人员选择字段">
-                  <el-option v-for="f in userFields" :key="f.id" :value="f.id"
-                    :label="`${f.title} (${f.id})`" />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-else label="说明">
-                <span class="tip">发起审批时由发起人选择审批人</span>
-              </el-form-item>
-              <el-form-item label="签核模式">
-                <el-radio-group v-model="selected.props.mode">
-                  <el-radio-button value="any">或签</el-radio-button>
-                  <el-radio-button value="all">会签</el-radio-button>
-                  <el-radio-button value="count">票签</el-radio-button>
+                <el-form-item v-if="selected.props.mode === 'count'" label="通过票数" label-width="70px">
+                  <el-input-number v-model="selected.props.count" :min="1" size="small" />
+                </el-form-item>
+              </section>
+
+              <section class="dp-sec">
+                <h3 class="dp-h3">✍ 审批人为空时</h3>
+                <el-radio-group :model-value="nobodyHandler" class="dp-radio-stack"
+                  @update:model-value="(v) => setNobody(selected, v)">
+                  <el-radio value="to_admin">转交给系统管理员</el-radio>
+                  <el-radio value="auto_pass">自动通过</el-radio>
+                  <el-radio value="auto_reject">自动驳回</el-radio>
+                  <el-radio value="to_user">转交给指定人员</el-radio>
                 </el-radio-group>
-              </el-form-item>
-              <el-form-item v-if="selected.props.mode === 'count'" label="通过票数">
-                <el-input-number v-model="selected.props.count" :min="1" />
-              </el-form-item>
-              <el-form-item label="审批人为空">
-                <el-select :model-value="nobodyHandler" @update:model-value="(v) => setNobody(selected, v)"
-                  style="width: 100%">
-                  <el-option value="to_admin" label="转交系统管理员" />
-                  <el-option value="auto_pass" label="自动通过" />
-                  <el-option value="auto_reject" label="自动驳回" />
-                  <el-option value="to_user" label="转交指定人员" />
+                <el-select v-if="nobodyHandler === 'to_user'" v-model="selected.props.nobody.users" multiple
+                  filterable remote :remote-method="searchUsers" placeholder="搜索转交人员" style="width: 100%">
+                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
                 </el-select>
-              </el-form-item>
-              <el-form-item label="驳回规则">
-                <el-select v-model="selected.props.refuse" style="width: 100%">
-                  <el-option value="TO_END" label="驳回即结束流程" />
-                  <el-option value="TO_BEFORE" label="退回上一审批节点重审" />
-                  <el-option value="TO_NODE" label="驳回到指定节点" />
-                </el-select>
-              </el-form-item>
-              <el-form-item v-if="selected.props.refuse === 'TO_NODE'" label="目标节点">
-                <el-select v-model="selected.props.refuseTarget" style="width: 100%"
-                  placeholder="选择审批节点">
+              </section>
+
+              <section class="dp-sec">
+                <h3 class="dp-h3">🙅 如果审批被驳回</h3>
+                <el-radio-group v-model="selected.props.refuse" class="dp-radio-stack">
+                  <el-radio value="TO_END">直接结束流程</el-radio>
+                  <el-radio value="TO_BEFORE">退回上一审批节点重审</el-radio>
+                  <el-radio value="TO_NODE">退回到指定节点</el-radio>
+                </el-radio-group>
+                <el-select v-if="selected.props.refuse === 'TO_NODE'" v-model="selected.props.refuseTarget"
+                  style="width: 100%" placeholder="选择审批节点">
                   <el-option v-for="n in approvalNodeOptions" :key="n.bpmnId" :value="n.bpmnId"
                     :label="n.name" :disabled="n.bpmnId === selected.bpmnId" />
                 </el-select>
-              </el-form-item>
-              <el-form-item v-if="nobodyHandler === 'to_user'" label="转交人员">
-                <el-select v-model="selected.props.nobody.users" multiple filterable remote
-                  :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
-                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="超时催办">
-                <el-switch :model-value="!!selected.props.timeout?.enabled"
-                  @change="(v) => toggleTimeout(selected, v)" />
+              </section>
+
+              <section class="dp-sec">
+                <h3 class="dp-h3">⏱ 审批期限</h3>
+                <el-switch v-model="selected.props.timeout.enabled" active-text="启用超时处理" />
                 <template v-if="selected.props.timeout?.enabled">
-                  <el-input-number v-model="selected.props.timeout.value" :min="1" size="small"
-                    style="margin-left: 8px; width: 90px" />
-                  <el-select v-model="selected.props.timeout.unit" size="small" style="width: 70px">
-                    <el-option value="H" label="小时" /><el-option value="D" label="天" />
-                  </el-select>
-                  <el-select v-model="selected.props.timeout.handler" size="small" style="width: 110px">
-                    <el-option value="NOTIFY" label="提醒" />
-                    <el-option value="PASS" label="自动通过" />
-                    <el-option value="REFUSE" label="自动驳回" />
-                  </el-select>
-                </template>
-              </el-form-item>
-              <template v-if="formItems.length">
-                <el-divider style="margin: 8px 0">表单字段权限</el-divider>
-                <div v-for="f in formItems.filter((x) => x.name !== 'Description')" :key="f.id"
-                  class="perm-row">
-                  <span class="perm-title">{{ f.title }}</span>
-                  <el-select :model-value="permOf(selected, f.id)" size="small" style="width: 110px"
-                    @update:model-value="(v) => setPerm(selected, f.id, v)">
-                    <el-option value="visible" label="可见(只读)" />
-                    <el-option value="editable" label="可编辑" />
-                    <el-option value="hidden" label="隐藏" />
-                  </el-select>
-                </div>
-              </template>
-            </el-form>
-          </template>
-
-          <!-- TRIGGER -->
-          <template v-else-if="selected.type === 'TRIGGER'">
-            <el-form label-width="90px" size="small">
-              <el-form-item label="节点名称">
-                <el-input v-model="selected.name" maxlength="32" />
-              </el-form-item>
-              <el-form-item label="请求方法">
-                <el-radio-group v-model="selected.props.method">
-                  <el-radio-button value="GET">GET</el-radio-button>
-                  <el-radio-button value="POST">POST</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="URL">
-                <el-input v-model="selected.props.url" placeholder="https://..." />
-              </el-form-item>
-              <p class="tip">流程到达时自动发起回调(POST 携带事件与节点名), 失败不阻塞流程, 结果记入时间线</p>
-            </el-form>
-          </template>
-
-          <!-- CC -->
-          <template v-else-if="selected.type === 'CC'">
-            <el-form label-width="90px" size="small">
-              <el-form-item label="节点名称">
-                <el-input v-model="selected.name" maxlength="32" />
-              </el-form-item>
-              <el-form-item label="抄送人">
-                <el-radio-group v-model="selected.props.assigneeType">
-                  <el-radio-button value="users">固定成员</el-radio-button>
-                  <el-radio-button value="runtime">发起时指定</el-radio-button>
-                  <el-radio-button value="form">表单联系人</el-radio-button>
-                  <el-radio-button value="self">发起人自己</el-radio-button>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item v-if="selected.props.assigneeType === 'users'" label="成员">
-                <el-select v-model="selected.props.users" multiple filterable remote
-                  :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
-                  <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
-                </el-select>
-              </el-form-item>
-              <p class="tip">抄送节点不阻塞流程: 到达时自动通过并向抄送人生成通知记录</p>
-            </el-form>
-          </template>
-
-          <!-- condition branch -->
-          <template v-else-if="selected.type === 'CONDITION'">
-            <el-form label-width="90px" size="small">
-              <el-form-item label="分支名称">
-                <el-input v-model="selected.name" maxlength="32" />
-              </el-form-item>
-              <el-divider style="margin: 8px 0">满足以下条件</el-divider>
-              <div v-for="(group, gi) in groupsWithCond" :key="gi" class="cond-group">
-                <div class="cond-group-head">
-                  <el-radio-group v-model="selected.props.groupsType" size="small" v-if="groupsWithCond.length > 1">
-                    <el-radio-button value="AND">条件组 且</el-radio-button>
-                    <el-radio-button value="OR">条件组 或</el-radio-button>
-                  </el-radio-group>
-                  <span v-else class="tip">条件组</span>
-                  <el-button text type="danger" size="small" v-if="groupsWithCond.length > 1"
-                    @click="selected.props.groups.splice(gi, 1)">删除组</el-button>
-                </div>
-                <div v-for="(cond, ci) in group.conditions" :key="ci" class="cond-row">
-                  <el-select v-model="cond.field" filterable allow-create size="small" style="width: 130px"
-                    placeholder="表单字段" @change="onCondFieldChange(cond)">
-                    <el-option v-for="f in formFields" :key="f.id" :value="f.id"
-                      :label="`${f.title} (${f.id})`" />
-                  </el-select>
-                  <el-select v-model="cond.compare" size="small" style="width: 86px">
-                    <el-option v-for="c in comparesOf(cond)" :key="c.value" :value="c.value" :label="c.label" />
-                  </el-select>
-                  <template v-if="cond.compare === 'between'">
-                    <el-input v-model="cond.value[0]" placeholder="下限" style="width: 70px" size="small" />
-                    <el-input v-model="cond.value[1]" placeholder="上限" style="width: 70px" size="small" />
-                  </template>
-                  <template v-else-if="cond.compare === 'in' && fieldOptionsOf(cond).length">
-                    <el-select v-model="cond.value" multiple size="small" style="width: 130px" placeholder="选项值">
-                      <el-option v-for="o in fieldOptionsOf(cond)" :key="o" :value="o" :label="o" />
+                  <div class="dp-inline">
+                    超过
+                    <el-input-number v-model="selected.props.timeout.value" :min="1" size="small"
+                      controls-position="right" style="width: 90px" />
+                    <el-select v-model="selected.props.timeout.unit" size="small" style="width: 74px">
+                      <el-option value="H" label="小时" /><el-option value="D" label="天" />
+                    </el-select>后
+                    <el-select v-model="selected.props.timeout.handler" size="small" style="width: 110px">
+                      <el-option value="NOTIFY" label="发催办提醒" />
+                      <el-option value="PASS" label="自动通过" />
+                      <el-option value="REFUSE" label="自动驳回" />
                     </el-select>
-                  </template>
-                  <el-input v-else v-model="cond.value[0]" placeholder="值" style="width: 90px" size="small" />
-                  <el-button text type="danger" size="small" @click="group.conditions.splice(ci, 1)">
-                    <el-icon><Close /></el-icon>
-                  </el-button>
-                </div>
-                <div class="cond-ops">
-                  <el-button v-if="group.conditions.length > 1" text size="small"
-                    @click="group.groupType = group.groupType === 'AND' ? 'OR' : 'AND'">
-                    组内: {{ group.groupType === 'AND' ? '且' : '或' }}
-                  </el-button>
-                  <el-button text size="small" :icon="Plus"
-                    @click="group.conditions.push(newCondition())">加条件</el-button>
+                  </div>
+                </template>
+              </section>
+            </el-tab-pane>
+
+            <el-tab-pane label="按钮权限" name="buttons">
+              <p class="dp-tip">勾选审批人在处理该节点时可见的操作按钮</p>
+              <div class="dp-btns">
+                <el-check-tag v-for="b in APPROVAL_BUTTONS" :key="b.value" :checked="hasBtn(selected, b.value)"
+                  @change="toggleBtn(selected, b.value)">{{ b.label }}</el-check-tag>
+              </div>
+            </el-tab-pane>
+
+            <el-tab-pane label="表单权限" name="perms">
+              <p class="dp-tip">设置该节点审批人看到的表单字段权限</p>
+              <div v-if="permFields.length" class="dp-perms">
+                <div v-for="f in permFields" :key="f.id" class="dp-perm-row">
+                  <span class="dp-perm-name">{{ f.title }}</span>
+                  <el-radio-group :model-value="permOf(selected, f.id)" size="small"
+                    @update:model-value="(v) => setPerm(selected, f.id, v)">
+                    <el-radio-button value="editable">可编辑</el-radio-button>
+                    <el-radio-button value="visible">只读</el-radio-button>
+                    <el-radio-button value="hidden">隐藏</el-radio-button>
+                  </el-radio-group>
                 </div>
               </div>
-              <el-button text size="small" :icon="Plus"
-                @click="selected.props.groups.push({ groupType: 'AND', conditions: [] })">加条件组</el-button>
-              <el-alert v-if="!hasAnyCondition" type="warning" :closable="false" style="margin-top: 8px"
-                title="无条件 = 默认分支 (前面条件都不满足时走此分支)" />
-            </el-form>
-          </template>
-
-          <!-- branch (parallel) -->
-          <template v-else-if="selected.type === 'BRANCH'">
-            <el-form label-width="90px" size="small">
-              <el-form-item label="分支名称">
-                <el-input v-model="selected.name" maxlength="32" />
-              </el-form-item>
-              <p class="tip">并行分支内的节点同时执行, 全部完成后汇聚继续</p>
-            </el-form>
-          </template>
-
-          <!-- group node itself -->
-          <template v-else-if="selected.type === 'CONDITIONS' || selected.type === 'CONCURRENTS'">
-            <p class="tip">
-              {{ selected.type === 'CONDITIONS'
-                ? '自上而下按优先级匹配, 命中一个分支即走 (无条件分支为默认兜底)'
-                : '所有分支同时执行, 全部完成后汇聚到后续节点' }}
-            </p>
-          </template>
-          <template v-else>
-            <p class="tip">根节点无需配置</p>
-          </template>
+              <el-empty v-else description="先在「审批表单」中添加字段" :image-size="60" />
+            </el-tab-pane>
+          </el-tabs>
         </template>
-      </div>
+
+        <template v-else-if="selected?.type === 'CONDITION'">
+          <section class="dp-sec">
+            <h3 class="dp-h3">🔀 分支条件</h3>
+            <el-input v-model="selected.name" placeholder="分支名称" style="width: 200px" size="small" />
+            <p class="dp-tip">满足以下条件时进入该分支（优先级自上而下）</p>
+            <div v-for="(group, gi) in selected.props.groups || []" :key="gi" class="cond-group">
+              <div class="cond-group-head">
+                <el-tag v-if="(selected.props.groups || []).length > 1" size="small" effect="plain">
+                  组{{ gi + 1 }}
+                </el-tag>
+                <el-radio-group v-if="(selected.props.groups || []).length > 1" v-model="selected.props.groupsType"
+                  size="small">
+                  <el-radio-button value="AND">组间 且</el-radio-button>
+                  <el-radio-button value="OR">组间 或</el-radio-button>
+                </el-radio-group>
+                <el-button v-if="(selected.props.groups || []).length > 1" text type="danger" size="small"
+                  @click="selected.props.groups.splice(gi, 1)">删除组</el-button>
+              </div>
+              <div v-for="(cond, ci) in group.conditions" :key="ci" class="cond-row">
+                <el-select v-model="cond.field" filterable allow-create size="small" style="width: 150px"
+                  placeholder="表单字段" @change="onCondFieldChange(cond)">
+                  <el-option v-for="f in formFields" :key="f.id" :value="f.id" :label="`${f.title} (${f.id})`" />
+                </el-select>
+                <el-select v-model="cond.compare" size="small" style="width: 96px">
+                  <el-option v-for="c in comparesOf(cond)" :key="c.value" :value="c.value" :label="c.label" />
+                </el-select>
+                <template v-if="cond.compare === 'between'">
+                  <el-input v-model="cond.value[0]" placeholder="≥" style="width: 70px" size="small" />
+                  <span class="dp-tip">~</span>
+                  <el-input v-model="cond.value[1]" placeholder="≤" style="width: 70px" size="small" />
+                </template>
+                <el-select v-else-if="cond.compare === 'in' && fieldOptionsOf(cond).length" v-model="cond.value"
+                  multiple size="small" style="width: 150px" placeholder="选项值">
+                  <el-option v-for="o in fieldOptionsOf(cond)" :key="o" :value="o" :label="o" />
+                </el-select>
+                <el-input v-else v-model="cond.value[0]" placeholder="值" style="width: 100px" size="small" />
+                <el-button text type="danger" size="small" @click="group.conditions.splice(ci, 1)">
+                  <el-icon><Close /></el-icon>
+                </el-button>
+              </div>
+              <div class="cond-ops">
+                <el-button v-if="group.conditions.length > 1" text size="small"
+                  @click="group.groupType = group.groupType === 'AND' ? 'OR' : 'AND'">
+                  组内: {{ group.groupType === 'AND' ? '且' : '或' }}
+                </el-button>
+                <el-button text size="small" :icon="Plus" @click="group.conditions.push(newCondition())">
+                  添加条件
+                </el-button>
+              </div>
+            </div>
+            <el-button text size="small" :icon="Plus"
+              @click="(selected.props.groups = selected.props.groups || []).push({ groupType: 'AND', conditions: [] })">
+              添加条件组
+            </el-button>
+            <el-alert v-if="!hasAnyCondition" type="warning" :closable="false" style="margin-top: 8px"
+              title="无条件 = 默认兜底分支（前面条件都不满足时走此分支）" />
+          </section>
+        </template>
+
+        <template v-else-if="selected?.type === 'CC'">
+          <section class="dp-sec">
+            <h3 class="dp-h3">📢 抄送人设置</h3>
+            <el-radio-group v-model="selected.props.assigneeType" class="dp-radio-grid">
+              <el-radio-button value="users">固定成员</el-radio-button>
+              <el-radio-button value="runtime">发起时指定</el-radio-button>
+            </el-radio-group>
+            <el-select v-if="selected.props.assigneeType === 'users'" v-model="selected.props.users" multiple
+              filterable remote :remote-method="searchUsers" placeholder="搜索用户" style="width: 100%">
+              <el-option v-for="u in userOptions" :key="u.id" :value="u.id" :label="u.name || u.username" />
+            </el-select>
+            <el-alert type="info" :closable="false" title="抄送节点不阻塞流程：到达时自动通过并生成通知记录" />
+          </section>
+        </template>
+
+        <template v-else-if="selected?.type === 'TRIGGER'">
+          <section class="dp-sec">
+            <h3 class="dp-h3">⚡ 触发器设置</h3>
+            <el-radio-group v-model="selected.props.method">
+              <el-radio-button value="GET">GET</el-radio-button>
+              <el-radio-button value="POST">POST</el-radio-button>
+            </el-radio-group>
+            <el-input v-model="selected.props.url" placeholder="https://your-api/hook" />
+            <el-alert type="info" :closable="false"
+              title="流程到达时自动回调（POST 携带事件与节点名），失败不阻塞流程，结果记入时间线" />
+          </section>
+        </template>
+
+        <template v-else-if="selected?.type === 'BRANCH'">
+          <section class="dp-sec">
+            <h3 class="dp-h3">⑂ 并行分支</h3>
+            <el-input v-model="selected.name" placeholder="分支名称" />
+            <el-alert type="info" :closable="false" title="并行分支同时执行，全部完成后汇聚到后续节点" />
+          </section>
+        </template>
+
+        <template v-else-if="selected">
+          <el-empty description="该节点无需配置" :image-size="70" />
+        </template>
+      </el-drawer>
+
     </div>
   </div>
     <el-dialog v-model="checkVisible" title="发布前检查" width="560px">
@@ -328,7 +332,7 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link, View, Document, Tickets, Money, ShoppingCart, Goods, Calendar, UserFilled, Star, Setting, Histogram } from '@element-plus/icons-vue'
@@ -369,6 +373,46 @@ async function loadGroups() {
 }
 const tree = reactive({ type: 'ROOT', name: '发起人', childNode: null })
 const selected = ref(null)
+const propsVisible = ref(false)
+const apTab = ref('who')
+
+watch(selected, (v) => { if (v) propsVisible.value = true })
+
+const ASSIGNEE_TYPES = [
+  { value: 'users', label: '指定成员', icon: 'User' },
+  { value: 'runtime', label: '发起人自选', icon: 'UserFilled' },
+  { value: 'form', label: '表单联系人', icon: 'Promotion' },
+  { value: 'self', label: '发起人自己', icon: 'Star' },
+]
+const APPROVAL_BUTTONS = [
+  { value: 'agree', label: '同意' },
+  { value: 'reject', label: '拒绝' },
+  { value: 'back_prev', label: '退回上节点' },
+  { value: 'back_node', label: '退回任意节点' },
+  { value: 'transfer', label: '转办' },
+  { value: 'add_sign', label: '加签' },
+  { value: 'terminate', label: '终止流程' },
+  { value: 'print', label: '打印' },
+]
+function hasBtn(node, key) {
+  return (node.props?.buttons || ['agree', 'reject']).includes(key)
+}
+function toggleBtn(node, key) {
+  if (!node.props.buttons) node.props.buttons = ['agree', 'reject']
+  const i = node.props.buttons.indexOf(key)
+  if (i >= 0) node.props.buttons.splice(i, 1)
+  else node.props.buttons.push(key)
+}
+function nodeColorKey(node) {
+  return { APPROVAL: 'approval', CC: 'cc', CONDITIONS: 'condition', CONCURRENTS: 'concurrent',
+    TRIGGER: 'trigger', ROOT: 'root' }[node?.type] || 'root'
+}
+function nodeIconKey(node) {
+  return { APPROVAL: 'Tickets', CC: 'Promotion', TRIGGER: 'Link', CONDITION: 'Share' }[node?.type] || 'Document'
+}
+const drawerTitle = computed(() => ({ APPROVAL: '审批节点', CONDITION: '条件分支', BRANCH: '并行分支',
+  CC: '抄送人', TRIGGER: '触发器', ROOT: '发起人' }[selected.value?.type] || '节点配置'))
+const permFields = computed(() => formItems.value.filter((f) => f.name !== 'Description'))
 const saving = ref(false)
 const userOptions = ref([])
 
@@ -668,6 +712,34 @@ onMounted(async () => {
 .wf-toolbar-left { display: flex; align-items: center; gap: 8px; }
 .wf-body { flex: 1; display: flex; min-height: 0; }
 .wf-form-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+/* ===== AntFlow-style props drawer ===== */
+.dp-header { display: flex; align-items: center; gap: 10px; width: 100%; }
+.dp-badge { width: 26px; height: 26px; border-radius: var(--ph-radius-md); display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; }
+.dp-id { font-size: 11px; color: var(--ph-text-disabled); font-family: monospace; margin-left: auto; }
+.dp-tabs :deep(.el-tabs__nav-wrap::after) { height: 1px; }
+.dp-sec { background: var(--ph-fill-light); border-radius: var(--ph-radius-lg);
+  padding: var(--ph-space-4); margin-bottom: var(--ph-space-4); }
+.dp-h3 { font-size: var(--ph-font-sm); color: var(--ph-text-primary); margin-bottom: var(--ph-space-3);
+  font-weight: 600; }
+.dp-radio-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--ph-space-2); margin-bottom: var(--ph-space-3); }
+.dp-type { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 4px;
+  border: 1px solid var(--ph-border); border-radius: var(--ph-radius-md); cursor: pointer;
+  font-size: var(--ph-font-xs); color: var(--ph-text-regular); background: var(--ph-fill-blank);
+  transition: all .15s; }
+.dp-type:hover { border-color: var(--ph-primary-light-5); color: var(--ph-primary); }
+.dp-type.active { border-color: var(--ph-primary); color: var(--ph-primary);
+  background: var(--ph-primary-light-9); box-shadow: 0 0 0 1px var(--ph-primary) inset; }
+.dp-radio-stack { display: flex; flex-direction: column; gap: var(--ph-space-2); align-items: flex-start; }
+.dp-radio-stack .el-radio { margin-right: 0; height: 26px; }
+.dp-inline { display: flex; align-items: center; gap: var(--ph-space-2); margin-top: var(--ph-space-2);
+  flex-wrap: wrap; }
+.dp-tip { font-size: var(--ph-font-xs); color: var(--ph-text-secondary); margin: var(--ph-space-2) 0; }
+.dp-btns { display: flex; flex-wrap: wrap; gap: var(--ph-space-2); }
+.dp-perm-row { display: flex; align-items: center; justify-content: space-between;
+  padding: var(--ph-space-2) 0; border-bottom: 1px dashed var(--ph-border-lighter); }
+.dp-perm-name { font-size: var(--ph-font-sm); color: var(--ph-text-regular); }
 .wf-form-pane :deep(.fd-layout) { flex: 1; }
 .wf-base-pane { flex: 1; overflow: auto; padding-top: 10px; }
 .logo-preview { width: 46px; height: 46px; border-radius: 10px; display: inline-flex;
