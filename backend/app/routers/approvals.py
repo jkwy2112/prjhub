@@ -33,6 +33,7 @@ def list_definitions(db: Session = Depends(get_db), user: User = Depends(get_cur
     ):
         item = DefinitionOut.model_validate(d)
         item.has_tree = bool(d.tree)
+        item.logo = d.logo if isinstance(d.logo, dict) else {"icon": "Document", "background": "#409EFF"}
         item.has_form = bool(d.form_items)
         out.append(item)
     return out
@@ -51,7 +52,9 @@ def deploy_tree(body: TreeDeploy, db: Session = Depends(get_db), user: User = De
 
     try:
         return approval_service.deploy_tree(db, body.key, body.name, body.tree,
-                                            form_items=body.form_items)
+                                            form_items=body.form_items,
+                                            group_name=body.group_name,
+                                            remark=body.remark, logo=body.logo)
     except FlowCompileError as exc:
         raise HTTPException(400, str(exc))
 

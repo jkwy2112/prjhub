@@ -66,10 +66,11 @@ def ensure_project_workflow_column(engine: Engine) -> None:
                 logger.info("added approval_tasks.%s column", col)
         with engine.connect() as conn:
             cols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
-        for col in ("tree", "node_meta"):
+        for col in ("tree", "node_meta", "group_name", "remark", "logo"):
             if cols and col not in cols:
+                coltype = "JSON" if col in ("tree", "node_meta", "logo") else "VARCHAR(255) DEFAULT ''"
                 with engine.begin() as conn:
-                    conn.execute(text(f"ALTER TABLE process_definitions ADD COLUMN {col} JSON"))
+                    conn.execute(text(f"ALTER TABLE process_definitions ADD COLUMN {col} {coltype}"))
                 logger.info("added process_definitions.%s column", col)
     elif engine.url.get_backend_name() == "postgresql":
         with engine.begin() as conn:
@@ -79,6 +80,9 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS form_items JSONB"))
             conn.execute(text("ALTER TABLE approval_tasks ADD COLUMN IF NOT EXISTS due_at TIMESTAMPTZ"))
             conn.execute(text("ALTER TABLE approval_tasks ADD COLUMN IF NOT EXISTS reminded_at TIMESTAMPTZ"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS group_name VARCHAR(64) DEFAULT '默认分组'"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS remark VARCHAR(500) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS logo JSONB"))
 
 
 def run_startup_migrations(engine: Engine) -> None:

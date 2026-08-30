@@ -20,12 +20,17 @@
             <el-input v-else-if="item.name === 'TextareaInput'" v-model="model[item.id]"
               type="textarea" :rows="3" :placeholder="item.props.placeholder" />
             <el-input-number v-else-if="item.name === 'NumberInput'" v-model="model[item.id]"
-              :placeholder="item.props.placeholder" style="width: 100%" :controls-position="'right'" />
-            <el-input v-else-if="item.name === 'AmountInput'" v-model="model[item.id]">
-              <template #prepend>￥</template>
-            </el-input>
+              :placeholder="item.props.placeholder" style="width: 100%" controls-position="right" />
+            <template v-else-if="item.name === 'AmountInput'">
+              <el-input-number v-model="model[item.id]" :precision="item.props.precision ?? 2"
+                controls-position="right" style="width: 100%" />
+              <div v-if="item.props.showChinese && model[item.id]" class="amount-cn">
+                大写：{{ amountChinese(model[item.id]) }}
+              </div>
+            </template>
             <el-select v-else-if="item.name === 'SelectInput'" v-model="model[item.id]"
-              :placeholder="item.props.placeholder || '请选择'" clearable style="width: 100%">
+              :placeholder="item.props.placeholder || '请选择'" clearable style="width: 100%"
+              :automatic-dropdown="item.props.expanding">
               <el-option v-for="o in item.props.options || []" :key="o" :value="o" :label="o" />
             </el-select>
             <el-select v-else-if="item.name === 'MultipleSelect'" v-model="model[item.id]"
@@ -33,7 +38,11 @@
               <el-option v-for="o in item.props.options || []" :key="o" :value="o" :label="o" />
             </el-select>
             <el-date-picker v-else-if="item.name === 'DateTime'" v-model="model[item.id]"
-              type="date" value-format="YYYY-MM-DD" :placeholder="item.props.placeholder || '选择日期'"
+              :type="dateTypeOf(item.props.format)" :value-format="item.props.format || 'YYYY-MM-DD'"
+              :placeholder="item.props.placeholder || '选择日期'" style="width: 100%" />
+            <el-date-picker v-else-if="item.name === 'DateTimeRange'" v-model="model[item.id]"
+              type="datetimerange" :value-format="item.props.format || 'YYYY-MM-DD HH:mm'"
+              :start-placeholder="item.props.placeholder || '开始'" end-placeholder="结束"
               style="width: 100%" />
             <el-select v-else-if="item.name === 'UserPicker'" v-model="model[item.id]"
               filterable remote :remote-method="(q) => $emit('search-users', q)"
@@ -45,9 +54,12 @@
               start-placeholder="开始" end-placeholder="结束" style="width: 100%" />
             <template v-else-if="item.name === 'ImageUpload' || item.name === 'FileUpload'">
               <el-upload :file-list="uploadList(model[item.id])"
-                :http-request="(opt) => $emit('upload', { item, opt })" list-type="picture-card"
-                v-bind="item.name === 'FileUpload' ? {} : { 'list-type': 'picture-card' }"
-                :on-remove="(f) => removeUpload(model[item.id], f)">
+                :http-request="(opt) => checkAndUpload(item, opt)"
+                :limit="item.props.maxNumber || 0"
+                :accept="acceptOf(item)"
+                :list-type="item.name === 'ImageUpload' ? 'picture-card' : 'text'"
+                :on-exceed="() => emit('limit-exceed', item)"
+                :on-remove="(f) => removeUpload(props.model[item.id], f)">
                 <el-icon><Plus /></el-icon>
               </el-upload>
             </template>
@@ -108,7 +120,67 @@ const props = defineProps({
   userOptions: { type: Array, default: () => [] },
   userLoading: { type: Boolean, default: false },
 })
-const emit = defineEmits(['item-click', 'search-users', 'upload'])
+const emit = defineEmits(['item-click', 'search-users', 'upload', 'upload-error', 'limit-exceed'])
+
+function dateTypeOf(format) {
+  if (format === 'YYYY') return 'year'
+  if (format === 'YYYY-MM') return 'month'
+  return 'date'
+}
+
+function amountChinese(money) {
+  const cnNums = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖']
+  const cnIntRadice = ['', '拾', '佰', '仟']
+  const cnIntUnits = ['', '万', '亿']
+  const cnDecUnits = ['角', '分']
+  money = parseFloat(money)
+  if (isNaN(money)) return ''
+  let integerNum = Math.floor(money)
+  let decimalNum = Math.round((money - integerNum) * 100)
+  if (integerNum === 0 && decimalNum === 0) return '零元整'
+  let intStr = String(integerNum)
+  let chineseStr = ''
+  const groups = []
+  while (intStr.length > 0) {
+    groups.unshift(intStr.slice(-4))
+    intStr = intStr.slice(0, -4)
+  }
+  groups.forEach((grp, gi) => {
+    let g = ''
+    for (let i = 0; i < grp.length; i++) {
+      const n = Number(grp[i])
+      const pos = grp.length - i - 1
+      if (n !== 0) g += cnNums[n] + cnIntRadice[pos]
+      else if (g && !g.endsWith('零')) g += '零'
+    }
+    g = g.replace(/零+$/, '')
+    if (g) g += cnIntUnits[groups.length - 1 - gi]
+    chineseStr += g
+  })
+  chineseStr += '元'
+  if (decimalNum > 0) {
+    const jiao = Math.floor(decimalNum / 10)
+    const fen = decimalNum % 10
+    if (jiao) chineseStr += cnNums[jiao] + cnDecUnits[0]
+    if (fen) chineseStr += cnNums[fen] + cnDecUnits[1]
+  } else {
+    chineseStr += '整'
+  }
+  return chineseStr
+}
+
+function acceptOf(item) {
+  const types = item.props.fileTypes || []
+  return types.length ? types.map((t) => '.' + t).join(',') : ''
+}
+
+function checkAndUpload(item, opt) {
+  if (item.props.maxSize && opt.file.size > item.props.maxSize * 1024 * 1024) {
+    emit('upload-error', `文件超过 ${item.props.maxSize}MB 限制`)
+    return
+  }
+  emit('upload', { item, opt })
+}
 
 function uploadList(v) {
   return (v || []).map((u) => ({ name: u.split('/').pop(), url: u }))
@@ -129,6 +201,7 @@ function addRow(item) {
 
 <style scoped>
 .fr-wrap { display: flex; flex-direction: column; gap: 14px; }
+.amount-cn { font-size: 12px; color: #e6a23c; margin-top: 4px; }
 .fr-table { width: 100%; border-collapse: collapse; }
 .fr-table th, .fr-table td { border: 1px solid #ebeef5; padding: 4px 6px; font-size: 12px; }
 .fr-item .fr-label { font-size: 13px; color: #606266; margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }

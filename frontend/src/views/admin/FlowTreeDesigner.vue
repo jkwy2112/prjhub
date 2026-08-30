@@ -3,27 +3,57 @@
     <div class="wf-toolbar">
       <div class="wf-toolbar-left">
         <el-button :icon="Back" text @click="$router.push('/admin/flows')">返回</el-button>
-        <el-input v-model="defName" style="width: 220px" size="small" placeholder="流程名称" maxlength="64" />
-        <el-input v-model="defKey" style="width: 200px" size="small" placeholder="标识(小写字母)" maxlength="64"
-          :disabled="!!definitionId" />
+        <el-steps :active="stepActive" align-center style="flex: 1; max-width: 460px; cursor: pointer"
+          finish-status="success" process-status="process" @click="onStepClick">
+          <el-step title="基础信息" @click="tab = 'base'" />
+          <el-step title="审批表单" @click="tab = 'form'" />
+          <el-step title="审批流程" @click="tab = 'process'" />
+        </el-steps>
       </div>
       <div>
-        <el-radio-group v-model="tab" size="small">
-          <el-radio-button value="form">表单设计</el-radio-button>
-          <el-radio-button value="process">流程设计</el-radio-button>
-        </el-radio-group>
-        <el-button v-if="tab === 'process'" size="small" @click="resetTree">清空重画</el-button>
-        <el-button size="small" type="primary" :loading="saving" :icon="Check" @click="save">保存并发布</el-button>
+        <el-button size="small" :icon="View" @click="checkPublish">检查并发布</el-button>
       </div>
     </div>
 
     <div class="wf-body">
-      <div v-if="tab === 'form'" class="wf-form-pane">
+      <div v-show="tab === 'base'" class="wf-base-pane">
+        <el-card shadow="never" style="width: 620px; margin: 0 auto">
+          <el-form label-position="top" size="default">
+            <el-form-item label="流程图标">
+              <span class="logo-preview" :style="{ background: logo.background }">
+                <el-icon :size="22" style="color:#fff"><component :is="iconOf(logo.icon)" /></el-icon>
+              </span>
+              <el-color-picker v-model="logo.background" :predefine="PRESETS" size="small" style="margin: 0 12px" />
+              <el-select v-model="logo.icon" style="width: 140px">
+                <el-option v-for="(ic, i) in ICON_NAMES" :key="i" :value="ic">
+                  <span style="display:flex;align-items:center;gap:6px"><el-icon><component :is="iconOf(ic)" /></el-icon>{{ ic }}</span>
+                </el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="流程名称" required>
+              <el-input v-model="defName" maxlength="64" placeholder="如: 报销审批" />
+            </el-form-item>
+            <el-form-item label="流程标识" required>
+              <el-input v-model="defKey" maxlength="64" placeholder="小写字母开头, 用于接口调用"
+                :disabled="!!definitionId" />
+            </el-form-item>
+            <el-form-item label="所在分组">
+              <el-select v-model="groupName" filterable allow-create default-first-option style="width: 240px">
+                <el-option v-for="g in groupOptions" :key="g" :value="g" :label="g" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="流程说明">
+              <el-input v-model="remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
+            </el-form-item>
+          </el-form>
+        </el-card>
+      </div>
+      <div v-show="tab === 'form'" class="wf-form-pane">
         <el-alert type="info" :closable="false" style="margin-bottom: 12px"
           title="表单字段供发起人填写, 字段ID 可在流程设计的条件分支中引用 (数字/文本/多选支持比较)" />
         <FormDesigner :items="formItems" />
       </div>
-      <div v-else class="wf-canvas">
+      <div v-show="tab === 'process'" class="wf-canvas">
         <div v-if="errors.length" class="wf-errors">
           <div v-for="(e, i) in errors" :key="i" class="wf-error-item" @click="locateError(e)">
             <el-icon><Warning /></el-icon>{{ e.message }}
@@ -296,13 +326,29 @@
       </div>
     </div>
   </div>
+    <el-dialog v-model="checkVisible" title="发布前检查" width="560px">
+      <el-steps :active="checkStep" align-center finish-status="success">
+        <el-step v-for="(st, i) in CHECK_STEPS" :key="i" :title="st" :status="checkStepStatus(i)" />
+      </el-steps>
+      <el-result :icon="checkDone ? (checkErrors.length ? 'warning' : 'success') : 'info'"
+        :title="checkDone ? (checkErrors.length ? `发现 ${checkErrors.length} 项错误` : '检查通过, 可以发布') : '检查中...'">
+        <template #sub-title>
+          <div v-for="(e, i) in visibleCheckErrors" :key="i" class="check-err">{{ e.message }}</div>
+        </template>
+        <template #extra>
+          <el-button v-if="checkDone" type="primary" size="medium" :disabled="!!checkErrors.length"
+            :loading="saving" @click="doPublish">{{ checkErrors.length ? '返回修改' : '确认发布' }}</el-button>
+          <el-button v-if="checkDone" size="medium" @click="checkVisible = false">关闭</el-button>
+        </template>
+      </el-result>
+    </el-dialog>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link } from '@element-plus/icons-vue'
+import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link, View, Tickets, Money, ShoppingCart, Goods, Calendar, UserFilled, Star, Setting, Histogram } from '@element-plus/icons-vue'
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
 import FormDesigner from '../../components/form/FormDesigner.vue'
@@ -312,8 +358,32 @@ const definitionId = route.params.id ? Number(route.params.id) : null
 
 const defKey = ref('')
 const defName = ref('')
-const tab = ref('form')
+const tab = ref('base')
+const stepActive = computed(() => ({ base: 0, form: 1, process: 2 }[tab.value] ?? 0))
 const formItems = ref([])
+const groupName = ref('默认分组')
+const remark = ref('')
+const logo = reactive({ icon: 'Document', background: '#409EFF' })
+const checkVisible = ref(false)
+const checkStep = ref(0)
+const checkDone = ref(false)
+const checkErrors = ref([])
+const CHECK_STEPS = ['基础信息', '审批表单', '审批流程']
+
+const ICON_NAMES = ['Document', 'Tickets', 'Money', 'ShoppingCart', 'Goods', 'Calendar',
+  'User', 'UserFilled', 'Star', 'Warning', 'Setting', 'Link', 'Histogram', 'Promotion']
+const PRESETS = ['#409EFF', '#67C23A', '#E6A23C', '#F56C6C', '#9254de', '#00ced1', '#1e90ff', '#ff4500']
+const ICONS = { Document, Tickets, Money, ShoppingCart, Goods, Calendar, User, UserFilled,
+  Star, Warning, Setting, Link, Histogram, Promotion, Back, Plus, Check, Close, Share, Operation, View }
+const iconOf = (name) => ICONS[name] || Document
+
+const groupOptions = ref(['默认分组'])
+async function loadGroups() {
+  try {
+    const { data } = await api.get('/approvals/definitions')
+    groupOptions.value = [...new Set(['默认分组', ...data.map((d) => d.group_name || '默认分组')])]
+  } catch { /* ignore */ }
+}
 const tree = reactive({ type: 'ROOT', name: '发起人', childNode: null })
 const selected = ref(null)
 const saving = ref(false)
@@ -499,64 +569,106 @@ const errors = computed(() => {
   return errs
 })
 
-function collectErrors(node, errs) {
+function collectErrors(node, errs, step = 2) {
   if (!node) return
   if (node.type === 'APPROVAL') {
     if (node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
-      errs.push({ node, message: `「${node.name}」未指定审批成员` })
+      errs.push({ node, step, message: `「${node.name}」未指定审批成员` })
     }
   }
   if (node.type === 'CC' && node.props?.assigneeType === 'users' && !(node.props.users || []).length) {
-    errs.push({ node, message: `「${node.name}」未指定抄送成员` })
+    errs.push({ node, step, message: `「${node.name}」未指定抄送成员` })
   }
   if (node.type === 'TRIGGER' && !/^https?:\/\//.test(node.props?.url || '')) {
-    errs.push({ node, message: `「${node.name}」的 URL 不合法` })
+    errs.push({ node, step, message: `「${node.name}」的 URL 不合法` })
   }
   if (node.type === 'APPROVAL' && node.props?.assigneeType === 'form' && !node.props.formField) {
-    errs.push({ node, message: `「${node.name}」未选择表单联系人字段` })
+    errs.push({ node, step, message: `「${node.name}」未选择表单联系人字段` })
   }
   ;(node.branches || []).forEach((b) => {
     if (b.type === 'CONDITION') {
       const hasCond = (b.props?.groups || []).some((g) => (g.conditions || []).length)
       const validConds = (b.props?.groups || []).every((g) =>
         (g.conditions || []).every((c) => c.field && c.value?.length && c.value[0] !== ''))
-      if (!hasCond) errs.push({ node: b, message: `条件分支「${b.name}」未设置条件 (无条件=默认分支)` })
-      else if (!validConds) errs.push({ node: b, message: `条件分支「${b.name}」存在未填写完整的条件` })
+      if (!hasCond) errs.push({ node: b, step, message: `条件分支「${b.name}」未设置条件 (无条件=默认分支)` })
+      else if (!validConds) errs.push({ node: b, step, message: `条件分支「${b.name}」存在未填写完整的条件` })
     }
-    collectErrors(b.childNode, errs)
+    collectErrors(b.childNode, errs, step)
   })
-  collectErrors(node.childNode, errs)
+  collectErrors(node.childNode, errs, step)
 }
 
-async function save() {
-  if (!defKey.value.trim() || !defName.value.trim()) {
-    return ElMessage.warning('请填写流程标识和名称')
-  }
-  if (!tree.childNode) return ElMessage.warning('流程至少需要一个节点')
-  if (errors.value.length) {
-    ElMessage.warning({ message: errors.value.slice(0, 3).map((e) => e.message).join('; ')
-      + (errors.value.length > 3 ? ' …' : ''), duration: 5000 })
-    selected.value = errors.value[0].node || selected.value
-    return
-  }
+const checkErrorsByStep = computed(() => {
+  const by = {}
+  for (const e of checkErrors.value) by[e.step] = [...(by[e.step] || []), e]
+  return by
+})
+const visibleCheckErrors = computed(() => checkErrors.value.slice(0, 6))
+
+function checkStepStatus(i) {
+  if (!checkDone.value) return checkStep.value === i ? 'process' : 'wait'
+  return (checkErrorsByStep.value[i]?.length ? 'error' : 'success')
+}
+
+function checkPublish() {
+  checkVisible.value = true
+  checkDone.value = false
+  checkStep.value = 0
+  checkErrors.value = []
+  const timer = setInterval(() => {
+    checkStep.value += 1
+    if (checkStep.value >= 3) {
+      clearInterval(timer)
+      runAllChecks()
+      checkDone.value = true
+    }
+  }, 350)
+}
+
+function runAllChecks() {
+  const errs = []
+  if (!defName.value.trim()) errs.push({ step: 0, message: '流程名称未设置' })
+  if (!defKey.value.trim()) errs.push({ step: 0, message: '流程标识未设置' })
+  else if (!/^[a-z][a-z0-9_]*$/.test(defKey.value.trim())) errs.push({ step: 0, message: '流程标识需小写字母开头 (仅 a-z0-9_)' })
+  const ids = formItems.value.map((f) => f.id)
+  const dup = ids.find((id, i) => ids.indexOf(id) !== i)
+  if (dup) errs.push({ step: 1, message: `表单字段ID重复: ${dup}` })
+  formItems.value.forEach((f) => {
+    if (!f.title.trim()) errs.push({ step: 1, message: '存在未命名的表单字段' })
+    if ((f.name === 'SelectInput' || f.name === 'MultipleSelect') && !(f.props.options || []).length) {
+      errs.push({ step: 1, message: `「${f.title}」未设置选项` })
+    }
+  })
+  if (!tree.childNode) errs.push({ step: 2, message: '流程至少需要一个审批节点' })
+  else collectErrors(tree.childNode, errs, 2)
+  checkErrors.value = errs
+}
+
+async function doPublish() {
   saving.value = true
   try {
     await api.post('/approvals/definitions/tree', {
       key: defKey.value.trim(), name: defName.value.trim(), tree,
       form_items: formItems.value,
+      group_name: groupName.value, remark: remark.value, logo: { ...logo },
     })
     ElMessage.success('流程已发布 (新版本立即生效, 在途单按旧版跑完)')
+    checkVisible.value = false
   } catch { /* interceptor shows compile error */ } finally {
     saving.value = false
   }
 }
 
 onMounted(async () => {
+  loadGroups()
   if (definitionId) {
     const { data } = await api.get(`/approvals/definitions/${definitionId}/tree`)
     defKey.value = data.key
     defName.value = data.name
     formItems.value = data.form_items || []
+    groupName.value = data.group_name || '默认分组'
+    remark.value = data.remark || ''
+    Object.assign(logo, data.logo || { icon: 'Document', background: '#409EFF' })
     const loaded = data.tree || { type: 'ROOT', childNode: null }
     normalizeNode(loaded.childNode)
     Object.assign(tree, loaded)
@@ -573,6 +685,10 @@ onMounted(async () => {
 .wf-toolbar-left { display: flex; align-items: center; gap: 8px; }
 .wf-body { flex: 1; display: flex; min-height: 0; }
 .wf-form-pane { flex: 1; overflow: auto; }
+.wf-base-pane { flex: 1; overflow: auto; padding-top: 10px; }
+.logo-preview { width: 46px; height: 46px; border-radius: 10px; display: inline-flex;
+  align-items: center; justify-content: center; vertical-align: middle; }
+.check-err { color: #f56c6c; font-size: 12px; padding: 2px 0; display: flex; justify-content: center; }
 .wf-canvas { flex: 1; overflow: auto; padding: 24px 40px 60px;
   background: radial-gradient(circle, #eef1f5 1px, transparent 1px) 0 0 / 20px 20px, #f7f8fa; }
 .wf-root-row { display: flex; flex-direction: column; align-items: center; }

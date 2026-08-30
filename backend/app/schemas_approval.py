@@ -16,6 +16,9 @@ class DefinitionOut(BaseModel):
     is_active: bool
     has_tree: bool = False
     has_form: bool = False
+    group_name: str = ""
+    remark: str = ""
+    logo: Optional[dict] = None
     created_at: datetime
 
 
@@ -30,6 +33,9 @@ class TreeDeploy(BaseModel):
     name: str = Field(default="", max_length=128)
     tree: dict
     form_items: List[dict] = Field(default_factory=list)
+    group_name: str = Field(default="默认分组", max_length=64)
+    remark: str = Field(default="", max_length=500)
+    logo: dict = Field(default_factory=dict)
 
 
 class TicketCreate(BaseModel):

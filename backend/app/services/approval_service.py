@@ -19,7 +19,8 @@ END_STATUS = {"end_approved": "approved", "end_rejected": "rejected"}
 
 def deploy(db: Session, key: str, name: str, bpmn_xml: str,
            tree: Optional[dict] = None, node_meta: Optional[dict] = None,
-           form_items: Optional[list] = None) -> ProcessDefinition:
+           form_items: Optional[list] = None, group_name: str = "默认分组",
+           remark: str = "", logo: Optional[dict] = None) -> ProcessDefinition:
     bpmn_engine.parse_spec(bpmn_xml)  # validate before storing
     last = (
         db.query(ProcessDefinition)
@@ -32,7 +33,8 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
         last.is_active = False
     definition = ProcessDefinition(key=key, name=name or key, version=version,
                                    bpmn_xml=bpmn_xml, tree=tree, node_meta=node_meta,
-                                   form_items=form_items, is_active=True)
+                                   form_items=form_items, group_name=group_name,
+                                   remark=remark, logo=logo, is_active=True)
     db.add(definition)
     db.commit()
     db.refresh(definition)
@@ -41,7 +43,8 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
 
 
 def deploy_tree(db: Session, key: str, name: str, tree: dict,
-                form_items: Optional[list] = None) -> ProcessDefinition:
+                form_items: Optional[list] = None, group_name: str = "默认分组",
+                remark: str = "", logo: Optional[dict] = None) -> ProcessDefinition:
     """Compile the designer tree and deploy (WFlow-style JSON as source of truth)."""
     from app.services import flow_compiler
 
@@ -58,7 +61,7 @@ def deploy_tree(db: Session, key: str, name: str, tree: dict,
     if bad:
         raise HTTPException(400, f"固定审批成员不存在: {bad}, 请重新选择")
     return deploy(db, key, name, bpmn_xml, tree=tree, node_meta=node_meta,
-                  form_items=form_items)
+                  form_items=form_items, group_name=group_name, remark=remark, logo=logo)
 
 
 def _validate_form_items(items: list) -> None:
