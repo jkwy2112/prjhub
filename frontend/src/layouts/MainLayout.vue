@@ -60,7 +60,7 @@ function onCommand(cmd) {
 
 <style scoped>
 .layout { height: 100%; }
-.sidebar { display: flex; flex-direction: column; background: #001529; }
+.sidebar { display: flex; flex-direction: column; background: #1d2129; }
 .brand {
   display: flex; align-items: center; gap: 10px;
   padding: 18px 20px; cursor: pointer;
@@ -74,10 +74,11 @@ function onCommand(cmd) {
 .sidebar-footer { padding: 12px 20px; color: #485661; font-size: 12px; }
 .header {
   display: flex; align-items: center; justify-content: space-between;
-  background: #fff; border-bottom: 1px solid #e4e7ed;
+  background: var(--ph-fill-blank, #fff); border-bottom: 1px solid var(--ph-border-lighter);
+  box-shadow: var(--ph-shadow-1); z-index: 5;
 }
 .header-title { font-size: 16px; font-weight: 600; color: #303133; }
 .user-chip { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .user-name { font-size: 14px; color: #303133; }
-.main { padding: 20px; overflow: auto; }
+.main { padding: var(--ph-space-5); overflow: auto; background: var(--ph-bg-page); }
 </style>

@@ -104,7 +104,7 @@ watch(showArchived, load)
 
 <style scoped>
 .toolbar { display: flex; justify-content: space-between; margin-bottom: 16px; }
-.project-card { cursor: pointer; border-radius: 10px; }
+.project-card { cursor: pointer; border-radius: var(--ph-radius-lg); transition: box-shadow .2s, transform .15s; }
 .project-head { display: flex; justify-content: space-between; align-items: center; }
 .project-key {
   color: #fff; font-weight: 700; font-size: 12px;

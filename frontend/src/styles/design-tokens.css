@@ -1,0 +1,69 @@
+/*
+ * PrjHub 设计令牌 — 基于 Element Plus 设计语言 (https://element-plus.org/zh-CN/guide/design)
+ * 原则: 一致 / 反馈 / 效率 / 可控
+ * 所有页面 UI 使用这些令牌, 禁止散落硬编码色值。
+ */
+:root {
+  /* ===== 品牌主色 ===== */
+  --ph-primary: #409eff;
+  --ph-primary-light-3: #79bbff;
+  --ph-primary-light-5: #a0cfff;
+  --ph-primary-light-7: #c6e2ff;
+  --ph-primary-light-8: #d9ecff;
+  --ph-primary-light-9: #ecf5ff;
+  --ph-primary-dark-2: #337ecc;
+
+  /* ===== 功能色 ===== */
+  --ph-success: #67c23a;
+  --ph-success-light-9: #f0f9eb;
+  --ph-warning: #e6a23c;
+  --ph-warning-light-9: #fdf6ec;
+  --ph-danger: #f56c6c;
+  --ph-danger-light-3: #f89898;
+  --ph-danger-light-9: #fef0f0;
+  --ph-info: #909399;
+  --ph-info-light-8: #f4f4f5;
+  --ph-info-light-9: #fafafa;
+
+  /* ===== 中性色 ===== */
+  --ph-text-primary: #303133;
+  --ph-text-regular: #606266;
+  --ph-text-secondary: #909399;
+  --ph-text-placeholder: #a8abb2;
+  --ph-text-disabled: #c0c4cc;
+  --ph-border-lighter: #ebeef5;
+  --ph-border-light: #e4e7ed;
+  --ph-border: #dcdfe6;
+  --ph-fill-light: #f5f7fa;
+  --ph-fill: #f0f2f5;
+  --ph-bg-page: #f2f3f5;
+
+  /* ===== 圆角 ===== */
+  --ph-radius-sm: 2px;
+  --ph-radius-base: 4px;
+  --ph-radius-md: 6px;
+  --ph-radius-lg: 8px;
+  --ph-radius-round: 20px;
+
+  /* ===== 阴影 ===== */
+  --ph-shadow-1: 0 1px 2px rgba(0,0,0,.04), 0 2px 4px rgba(0,0,0,.04);
+  --ph-shadow-2: 0 2px 4px rgba(0,0,0,.06), 0 4px 8px rgba(0,0,0,.06);
+  --ph-shadow-3: 0 4px 8px rgba(0,0,0,.08), 0 8px 16px rgba(0,0,0,.08);
+
+  /* ===== 间距 (4px 栅格) ===== */
+  --ph-space-1: 4px; --ph-space-2: 8px; --ph-space-3: 12px;
+  --ph-space-4: 16px; --ph-space-5: 20px; --ph-space-6: 24px;
+
+  /* ===== 字号 ===== */
+  --ph-font-xs: 12px; --ph-font-sm: 13px; --ph-font-base: 14px;
+  --ph-font-md: 16px; --ph-font-lg: 18px; --ph-font-xl: 20px;
+
+  /* ===== 流程节点语义色 (对齐辅助色系) ===== */
+  --ph-node-approval: #e6a23c;
+  --ph-node-cc: #409eff;
+  --ph-node-condition: #67c23a;
+  --ph-node-concurrent: #7b8ff7;
+  --ph-node-trigger: #9a6ee0;
+  --ph-node-root: #909399;
+  --ph-line: #dcdfe6;
+}

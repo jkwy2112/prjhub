@@ -120,9 +120,11 @@ onMounted(async () => {
 <style scoped>
 .stat-row { margin-bottom: 16px; }
 .stat-card {
-  background: #fff; border-radius: 8px; padding: 20px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  background: var(--ph-fill-blank, #fff); border-radius: var(--ph-radius-lg); padding: var(--ph-space-5);
+  border: 1px solid var(--ph-border-lighter); box-shadow: var(--ph-shadow-1);
+  transition: box-shadow .2s, transform .15s;
 }
+.stat-card:hover { box-shadow: var(--ph-shadow-2); transform: translateY(-2px); }
 .stat-value { font-size: 30px; font-weight: 700; }
 .stat-label { color: #909399; font-size: 13px; margin-top: 4px; }
 .chart { height: 260px; }

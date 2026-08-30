@@ -93,18 +93,19 @@ onMounted(load)
 .flow-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
 .flow-card.add-card {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; color: #909399; cursor: pointer; border: 1px dashed #dcdfe6; min-height: 120px;
-  box-shadow: none;
+  gap: 6px; color: var(--ph-text-secondary); cursor: pointer; border: 1px dashed var(--ph-border);
+  min-height: 120px; box-shadow: none;
 }
-.flow-card.add-card:hover { color: #409eff; border-color: #409eff; }
+.flow-card.add-card:hover { color: var(--ph-primary); border-color: var(--ph-primary);
+  background: var(--ph-primary-light-9); }
 .card-head { display: flex; align-items: center; gap: 10px; }
 .card-logo { width: 38px; height: 38px; border-radius: 9px; display: inline-flex;
   align-items: center; justify-content: center; flex-shrink: 0; }
 .card-name { font-size: 14px; color: #303133; }
 .card-remark {
-  color: #909399; font-size: 12px; margin: 8px 0 10px; height: 32px; overflow: hidden;
+  color: var(--ph-text-secondary); font-size: var(--ph-font-xs); margin: 8px 0 10px; height: 32px; overflow: hidden;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .card-foot { display: flex; justify-content: space-between; align-items: center;
-  color: #c0c4cc; font-size: 11px; border-top: 1px dashed #f0f0f0; padding-top: 8px; }
+  color: var(--ph-text-disabled); font-size: 11px; border-top: 1px dashed var(--ph-border-lighter); padding-top: 8px; }
 </style>

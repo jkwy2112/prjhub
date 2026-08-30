@@ -79,14 +79,18 @@ async function goWecom() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1d2b64 0%, #409EFF6b 100%), #1d2b64;
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 20%, var(--ph-primary-light-7) 0%, transparent 50%),
+    radial-gradient(ellipse 60% 50% at 20% 80%, var(--ph-primary-light-9) 0%, transparent 50%),
+    var(--ph-bg-page);
 }
 .login-card {
   width: 380px;
   padding: 40px 36px 28px;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+  background: var(--ph-fill-blank, #fff);
+  border: 1px solid var(--ph-border-lighter);
+  border-radius: var(--ph-radius-lg);
+  box-shadow: var(--ph-shadow-3);
 }
 .login-brand { text-align: center; margin-bottom: 28px; }
 .logo {
