@@ -353,7 +353,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link, View, Tickets, Money, ShoppingCart, Goods, Calendar, UserFilled, Star, Setting, Histogram } from '@element-plus/icons-vue'
+import { Back, Plus, Check, Close, User, Share, Operation, Promotion, Warning, Link, View, Document, Tickets, Money, ShoppingCart, Goods, Calendar, UserFilled, Star, Setting, Histogram } from '@element-plus/icons-vue'
 import api from '../../api'
 import WfNode from '../../components/flow/WfNode.vue'
 import FormDesigner from '../../components/form/FormDesigner.vue'
