@@ -111,6 +111,18 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok", "app": settings.APP_NAME, "version": settings.APP_VERSION}
 
+    @app.get("/meta/depts", tags=["meta"])
+    def list_depts():
+        from app.db import SessionLocal
+        from app.models import User
+
+        db = SessionLocal()
+        try:
+            rows = [r[0] for r in db.query(User.dept).filter(User.dept != "").distinct().all()]
+            return sorted(rows)
+        finally:
+            db.close()
+
     @app.get("/meta/auth-options", tags=["meta"])
     def auth_options():
         from app.db import SessionLocal

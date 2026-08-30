@@ -19,6 +19,9 @@ class DefinitionOut(BaseModel):
     group_name: str = ""
     remark: str = ""
     logo: Optional[dict] = None
+    visible_scope: str = "all"
+    visible_depts: Optional[List[str]] = None
+    visible_user_ids: Optional[List[int]] = None
     created_at: datetime
 
 
@@ -36,6 +39,9 @@ class TreeDeploy(BaseModel):
     group_name: str = Field(default="默认分组", max_length=64)
     remark: str = Field(default="", max_length=500)
     logo: dict = Field(default_factory=dict)
+    visible_scope: str = Field(default="all", pattern=r"^(all|dept|user)$")
+    visible_depts: List[str] = Field(default_factory=list)
+    visible_user_ids: List[int] = Field(default_factory=list)
 
 
 class TicketCreate(BaseModel):

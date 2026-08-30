@@ -78,6 +78,21 @@ def ensure_project_workflow_column(engine: Engine) -> None:
                 logger.info("added approval_tasks.%s column", col)
         with engine.connect() as conn:
             cols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
+        for col in ("visible_depts", "visible_user_ids"):
+            vcols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()] if False else None
+        with engine.connect() as conn2:
+            vcols2 = [row[1] for row in conn2.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
+        if vcols2 and "visible_scope" not in vcols2:
+            with engine.begin() as c:
+                c.execute(text("ALTER TABLE process_definitions ADD COLUMN visible_scope VARCHAR(16) DEFAULT 'all'"))
+            logger.info("added process_definitions.visible_scope")
+        for col in ("visible_depts", "visible_user_ids"):
+            if vcols2 and col not in vcols2:
+                with engine.begin() as c:
+                    c.execute(text(f"ALTER TABLE process_definitions ADD COLUMN {col} JSON"))
+                logger.info("added process_definitions.%s", col)
+        with engine.connect() as conn:
+            cols = [row[1] for row in conn.execute(text("PRAGMA table_info(process_definitions)")).fetchall()]
         for col in ("tree", "node_meta", "group_name", "remark", "logo"):
             if cols and col not in cols:
                 coltype = "JSON" if col in ("tree", "node_meta", "logo") else "VARCHAR(255) DEFAULT ''"
@@ -97,6 +112,9 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS logo JSONB"))
             conn.execute(text("ALTER TABLE approval_tickets ADD COLUMN IF NOT EXISTS ticket_no VARCHAR(32) DEFAULT ''"))
             conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS dept VARCHAR(128) DEFAULT ''"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS visible_scope VARCHAR(16) DEFAULT 'all'"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS visible_depts JSONB"))
+            conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS visible_user_ids JSONB"))
 
 def run_startup_migrations(engine: Engine) -> None:
     rebuild_tasks_status_column(engine)

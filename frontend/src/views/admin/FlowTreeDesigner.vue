@@ -54,6 +54,23 @@
             <el-form-item label="流程说明">
               <el-input v-model="remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
             </el-form-item>
+            <el-form-item label="显示范围">
+              <el-radio-group v-model="visibleScope">
+                <el-radio-button value="all">所有人</el-radio-button>
+                <el-radio-button value="dept">指定部门</el-radio-button>
+                <el-radio-button value="user">指定成员</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="visibleScope === 'dept'" label="可见部门">
+              <el-select v-model="visibleDepts" multiple filterable allow-create default-first-option
+                placeholder="选择或输入部门" style="width: 100%">
+                <el-option v-for="d in deptOptions" :key="d" :value="d" :label="d" />
+              </el-select>
+            </el-form-item>
+            <el-form-item v-if="visibleScope === 'user'" label="可见成员">
+              <UserPickerField v-model="visibleUsers" multiple title="选择可发起的成员"
+                @change="(v) => visibleUserIds = v.map((x) => x.id)" />
+            </el-form-item>
           </el-form>
         </el-card>
       </div>
@@ -353,6 +370,18 @@ const stepActive = computed(() => ({ base: 0, form: 1, process: 2 }[tab.value] ?
 const formItems = ref([])
 const groupName = ref('默认分组')
 const remark = ref('')
+const visibleScope = ref('all')
+const visibleDepts = ref([])
+const visibleUserIds = ref([])
+const visibleUsers = ref([])
+const deptOptions = ref([])
+
+async function loadDepts() {
+  try {
+    const { data } = await api.get('/meta/depts')
+    deptOptions.value = data
+  } catch { /* ignore */ }
+}
 const logo = reactive({ icon: 'Document', background: '#409EFF' })
 const checkVisible = ref(false)
 const TABS = [
@@ -701,6 +730,8 @@ function runAllChecks() {
   if (!defName.value.trim()) errs.push({ step: 0, message: '流程名称未设置' })
   if (!defKey.value.trim()) errs.push({ step: 0, message: '流程标识未设置' })
   else if (!/^[a-z][a-z0-9_]*$/.test(defKey.value.trim())) errs.push({ step: 0, message: '流程标识需小写字母开头 (仅 a-z0-9_)' })
+  if (visibleScope.value === 'dept' && !visibleDepts.value.length) errs.push({ step: 0, message: '按部门可见时需选择部门' })
+  if (visibleScope.value === 'user' && !visibleUserIds.value.length) errs.push({ step: 0, message: '按成员可见时需选择成员' })
   const ids = formItems.value.map((f) => f.id)
   const dup = ids.find((id, i) => ids.indexOf(id) !== i)
   if (dup) errs.push({ step: 1, message: `表单字段ID重复: ${dup}` })
@@ -722,6 +753,9 @@ async function doPublish() {
       key: defKey.value.trim(), name: defName.value.trim(), tree,
       form_items: formItems.value,
       group_name: groupName.value, remark: remark.value, logo: { ...logo },
+      visible_scope: visibleScope.value,
+      visible_depts: visibleScope.value === 'dept' ? visibleDepts.value : [],
+      visible_user_ids: visibleScope.value === 'user' ? visibleUserIds.value : [],
     })
     ElMessage.success('流程已发布 (新版本立即生效, 在途单按旧版跑完)')
     checkVisible.value = false
@@ -732,6 +766,7 @@ async function doPublish() {
 
 onMounted(async () => {
   loadGroups()
+  loadDepts()
   if (definitionId) {
     const { data } = await api.get(`/approvals/definitions/${definitionId}/tree`)
     defKey.value = data.key
@@ -739,8 +774,14 @@ onMounted(async () => {
     formItems.value = data.form_items || []
     groupName.value = data.group_name || '默认分组'
     remark.value = data.remark || ''
+    visibleScope.value = data.visible_scope || 'all'
+    visibleDepts.value = data.visible_depts || []
+    visibleUserIds.value = data.visible_user_ids || []
     Object.assign(logo, data.logo || { icon: 'Document', background: '#409EFF' })
     definitionVersion.value = data.version
+    ensureUserIndex(visibleUserIds.value).then(() => {
+      visibleUsers.value = (data.visible_user_ids || []).map(id2user)
+    })
     const loaded = data.tree || { type: 'ROOT', childNode: null }
     normalizeNode(loaded.childNode)
     Object.assign(tree, loaded)

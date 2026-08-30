@@ -20,7 +20,9 @@ END_STATUS = {"end_approved": "approved", "end_rejected": "rejected"}
 def deploy(db: Session, key: str, name: str, bpmn_xml: str,
            tree: Optional[dict] = None, node_meta: Optional[dict] = None,
            form_items: Optional[list] = None, group_name: str = "默认分组",
-           remark: str = "", logo: Optional[dict] = None) -> ProcessDefinition:
+           remark: str = "", logo: Optional[dict] = None,
+           visible_scope: str = "all", visible_depts: Optional[list] = None,
+           visible_user_ids: Optional[list] = None) -> ProcessDefinition:
     bpmn_engine.parse_spec(bpmn_xml)  # validate before storing
     last = (
         db.query(ProcessDefinition)
@@ -34,7 +36,10 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
     definition = ProcessDefinition(key=key, name=name or key, version=version,
                                    bpmn_xml=bpmn_xml, tree=tree, node_meta=node_meta,
                                    form_items=form_items, group_name=group_name,
-                                   remark=remark, logo=logo, is_active=True)
+                                   remark=remark, logo=logo,
+                                   visible_scope=visible_scope,
+                                   visible_depts=visible_depts,
+                                   visible_user_ids=visible_user_ids, is_active=True)
     db.add(definition)
     db.commit()
     db.refresh(definition)
@@ -44,7 +49,9 @@ def deploy(db: Session, key: str, name: str, bpmn_xml: str,
 
 def deploy_tree(db: Session, key: str, name: str, tree: dict,
                 form_items: Optional[list] = None, group_name: str = "默认分组",
-                remark: str = "", logo: Optional[dict] = None) -> ProcessDefinition:
+                remark: str = "", logo: Optional[dict] = None,
+                visible_scope: str = "all", visible_depts: Optional[list] = None,
+                visible_user_ids: Optional[list] = None) -> ProcessDefinition:
     """Compile the designer tree and deploy (WFlow-style JSON as source of truth)."""
     from app.services import flow_compiler
 
@@ -60,8 +67,21 @@ def deploy_tree(db: Session, key: str, name: str, tree: dict,
     })
     if bad:
         raise HTTPException(400, f"固定审批成员不存在: {bad}, 请重新选择")
+    if visible_scope not in ("all", "dept", "user"):
+        raise HTTPException(400, "显示范围不合法 (all/dept/user)")
+    if visible_scope == "dept" and not (visible_depts or []):
+        raise HTTPException(400, "按部门可见时需至少选择一个部门")
+    if visible_scope == "user":
+        ids = visible_user_ids or []
+        if not ids:
+            raise HTTPException(400, "按成员可见时需至少选择一名成员")
+        missing = [i for i in ids if db.get(User, i) is None]
+        if missing:
+            raise HTTPException(400, f"可见成员不存在: {missing}")
     return deploy(db, key, name, bpmn_xml, tree=tree, node_meta=node_meta,
-                  form_items=form_items, group_name=group_name, remark=remark, logo=logo)
+                  form_items=form_items, group_name=group_name, remark=remark, logo=logo,
+                  visible_scope=visible_scope, visible_depts=visible_depts,
+                  visible_user_ids=visible_user_ids)
 
 
 def _validate_form_items(items: list) -> None:

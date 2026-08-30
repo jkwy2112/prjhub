@@ -2,10 +2,34 @@
   <div>
     <div class="toolbar">
       <el-radio-group v-model="tab">
+        <el-radio-button value="launch">发起审批</el-radio-button>
         <el-radio-button value="pending">我的待办</el-radio-button>
         <el-radio-button value="submitted">我发起的</el-radio-button>
       </el-radio-group>
-      <el-button type="primary" :icon="Plus" @click="openCreate">发起审批</el-button>
+      <el-badge :value="pending.length" :hidden="!pending.length" type="danger" offset="-4">
+        <span></span>
+      </el-badge>
+    </div>
+
+    <!-- 模板画廊: 点击卡片直接发起 -->
+    <div v-if="tab === 'launch'" class="tpl-gallery" v-loading="loading">
+      <div v-for="(group, gname) in groupedTemplates" :key="gname" class="tpl-group">
+        <div class="tpl-group-title">{{ gname }} <span class="tpl-cnt">({{ group.length }})</span></div>
+        <div class="tpl-cards">
+          <div v-for="d in group" :key="d.id" class="tpl-card"
+            @click="launchTemplate(d)">
+            <span class="tpl-logo" :style="{ background: (d.logo && d.logo.background) || 'var(--ph-primary)' }">
+              <el-icon :size="20" style="color: #fff"><component :is="iconOf(d.logo && d.logo.icon)" /></el-icon>
+            </span>
+            <div class="tpl-info">
+              <b class="tpl-name">{{ d.name }}</b>
+              <span class="tpl-remark">{{ d.remark || '点击发起审批' }}</span>
+            </div>
+            <el-icon class="tpl-go"><ArrowRight /></el-icon>
+          </div>
+        </div>
+      </div>
+      <el-empty v-if="!loading && !definitions.length" description="暂无可用流程模板" />
     </div>
 
     <!-- 我的待办 -->
@@ -36,7 +60,7 @@
     </el-table>
 
     <!-- 我发起的 -->
-    <el-table v-else :data="submitted" v-loading="loading" style="background: #fff; border-radius: 8px"
+    <el-table v-if="tab === 'submitted'" :data="submitted" v-loading="loading" style="background: #fff; border-radius: 8px"
       @row-click="openDetail" row-class-name="clickable">
       <el-table-column label="审批编号" width="150">
         <template #default="{ row }">
@@ -71,13 +95,18 @@
     </el-table>
 
     <!-- 发起审批 -->
-    <el-dialog v-model="createVisible" title="发起审批" width="560px">
+    <el-dialog v-model="createVisible" title="发起审批" width="600px">
       <el-form :model="form" label-width="100px">
-        <el-form-item label="流程模板">
-          <el-select v-model="form.definition_key" style="width: 100%">
-            <el-option v-for="d in definitions" :key="d.key" :value="d.key" :label="d.name" />
-          </el-select>
-        </el-form-item>
+        <div class="launch-tpl">
+          <span class="tpl-logo sm" :style="{ background: (currentDef?.logo)?.background || 'var(--ph-primary)' }">
+            <el-icon :size="15" style="color:#fff"><component :is="iconOf(currentDef?.logo?.icon)" /></el-icon>
+          </span>
+          <b>{{ currentDef?.name }}</b>
+          <el-tag v-if="currentDef?.visible_scope && currentDef.visible_scope !== 'all'" size="small"
+            type="info" effect="plain" style="margin-left: 8px">
+            {{ { dept: '部门可见', user: '指定成员' }[currentDef.visible_scope] }}
+          </el-tag>
+        </div>
 
         <template v-if="currentDef && currentDef.has_tree">
           <!-- dynamically render the designed form -->
@@ -553,6 +582,25 @@ async function searchUsers(q) {
   userOptions.value = data
 }
 
+const groupedTemplates = computed(() => {
+  const map = {}
+  for (const d of definitions.value) {
+    ;(map[d.group_name || '默认分组'] = map[d.group_name || '默认分组'] || []).push(d)
+  }
+  return map
+})
+
+import { Document, Tickets, Money, ShoppingCart, Goods, Calendar, User, UserFilled,
+  Star, Warning, Setting, Link, Histogram, Promotion, ArrowRight } from '@element-plus/icons-vue'
+const TPL_ICONS = { Document, Tickets, Money, ShoppingCart, Goods, Calendar, User, UserFilled,
+  Star, Warning, Setting, Link, Histogram, Promotion }
+const iconOf = (name) => TPL_ICONS[name] || Document
+
+function launchTemplate(def) {
+  form.definition_key = def.key
+  openCreate()
+}
+
 function openCreate() {
   Object.assign(form, {
     definition_key: definitions.value[0]?.key || 'generic_approval', title: '', amount: 100,
@@ -645,7 +693,33 @@ onMounted(load)
 </script>
 
 <style scoped>
-.toolbar { display: flex; justify-content: space-between; margin-bottom: 14px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+
+.tpl-gallery { min-height: 200px; }
+.tpl-group { margin-bottom: 20px; }
+.tpl-group-title { font-size: 14px; font-weight: 600; color: var(--ph-text-primary); margin-bottom: 10px; }
+.tpl-cnt { color: var(--ph-text-secondary); font-weight: normal; margin-left: 4px; }
+.tpl-cards { display: flex; flex-wrap: wrap; gap: 12px; }
+.tpl-card {
+  display: flex; align-items: center; gap: 12px; width: 320px; padding: 14px;
+  background: var(--ph-fill-blank, #fff); border: 1px solid var(--ph-border-lighter);
+  border-radius: var(--ph-radius-lg); cursor: pointer;
+  transition: all .15s; box-shadow: var(--ph-shadow-1);
+}
+.tpl-card:hover { box-shadow: var(--ph-shadow-3); transform: translateY(-2px);
+  border-color: var(--ph-primary-light-5); }
+.tpl-logo { width: 42px; height: 42px; border-radius: 10px; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; }
+.tpl-logo.sm { width: 26px; height: 26px; border-radius: 7px; }
+.tpl-info { flex: 1; min-width: 0; line-height: 1.4; }
+.tpl-name { display: block; font-size: var(--ph-font-sm); color: var(--ph-text-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tpl-remark { font-size: 11px; color: var(--ph-text-secondary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.tpl-go { color: var(--ph-text-disabled); transition: all .15s; }
+.tpl-card:hover .tpl-go { color: var(--ph-primary); transform: translateX(3px); }
+.launch-tpl { display: flex; align-items: center; gap: 8px; padding: 8px 12px; margin-bottom: 14px;
+  background: var(--ph-fill-light); border-radius: var(--ph-radius-md); }
 .form-tip { font-size: 12px; color: var(--ph-text-disabled); margin-left: 10px; }
 .tno { font-family: monospace; color: var(--ph-text-secondary); font-size: 12px; letter-spacing: .5px; }
 

@@ -22,7 +22,20 @@ from app.services import approval_service
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
 
-@router.get("/definitions", response_model=List[DefinitionOut], summary="流程定义(激活版本)")
+def _visible_to(d: ProcessDefinition, user: User) -> bool:
+    if user.is_superuser:
+        return True
+    scope = d.visible_scope or "all"
+    if scope == "all":
+        return True
+    if scope == "dept":
+        return bool(user.dept) and user.dept in (d.visible_depts or [])
+    if scope == "user":
+        return user.id in (d.visible_user_ids or [])
+    return False
+
+
+@router.get("/definitions", response_model=List[DefinitionOut], summary="流程定义(按显示范围过滤)")
 def list_definitions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     out = []
     for d in (
@@ -31,6 +44,8 @@ def list_definitions(db: Session = Depends(get_db), user: User = Depends(get_cur
         .order_by(ProcessDefinition.id)
         .all()
     ):
+        if not _visible_to(d, user):
+            continue
         item = DefinitionOut.model_validate(d)
         item.has_tree = bool(d.tree)
         item.logo = d.logo if isinstance(d.logo, dict) else {"icon": "Document", "background": "#409EFF"}
@@ -54,7 +69,10 @@ def deploy_tree(body: TreeDeploy, db: Session = Depends(get_db), user: User = De
         return approval_service.deploy_tree(db, body.key, body.name, body.tree,
                                             form_items=body.form_items,
                                             group_name=body.group_name,
-                                            remark=body.remark, logo=body.logo)
+                                            remark=body.remark, logo=body.logo,
+                                            visible_scope=body.visible_scope,
+                                            visible_depts=body.visible_depts,
+                                            visible_user_ids=body.visible_user_ids)
     except FlowCompileError as exc:
         raise HTTPException(400, str(exc))
 

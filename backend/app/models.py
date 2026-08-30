@@ -86,6 +86,9 @@ class ProcessDefinition(Base):
     form_items: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)    # form designer source
     group_name: Mapped[str] = mapped_column(String(64), default="默认分组")
     remark: Mapped[str] = mapped_column(String(500), default="")
+    visible_scope: Mapped[str] = mapped_column(String(16), default="all")  # all/dept/user
+    visible_depts: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    visible_user_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     logo: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)          # {icon, background}
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
