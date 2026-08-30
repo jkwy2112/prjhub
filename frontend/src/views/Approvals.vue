@@ -287,6 +287,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Printer } from '@element-plus/icons-vue'
+import UserPickerField from '../components/common/UserPickerField.vue'
 import api from '../api'
 import { fmtDateTime } from '../constants'
 import { useAuthStore } from '../stores/auth'
