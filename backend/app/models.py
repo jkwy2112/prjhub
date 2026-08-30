@@ -96,6 +96,7 @@ class ApprovalTicket(Base):
     __tablename__ = "approval_tickets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    ticket_no: Mapped[str] = mapped_column(String(32), default="", index=True)  # 审批编号 e.g. 20260830153012
     title: Mapped[str] = mapped_column(String(255))
     project_id: Mapped[Optional[int]] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"),
                                                       nullable=True)

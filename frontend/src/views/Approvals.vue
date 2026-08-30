@@ -24,8 +24,8 @@
       <el-table-column v-if="pendingAmountLabel" :label="pendingAmountLabel" width="110">
         <template #default="{ row }">{{ amountText(row.ticket) }}</template>
       </el-table-column>
-      <el-table-column label="发起时间" width="160">
-        <template #default="{ row }">{{ fmtDateTime(row.ticket.created_at) }}</template>
+      <el-table-column label="提交时间" width="140">
+        <template #default="{ row }">{{ fmtSubmit(row.ticket.created_at) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="200" fixed="right">
         <template #default="{ row }">
@@ -38,6 +38,11 @@
     <!-- 我发起的 -->
     <el-table v-else :data="submitted" v-loading="loading" style="background: #fff; border-radius: 8px"
       @row-click="openDetail" row-class-name="clickable">
+      <el-table-column label="审批编号" width="150">
+        <template #default="{ row }">
+          <span class="tno">{{ row.ticket_no || String(row.id).padStart(14, '0') }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="标题" min-width="200">
         <template #default="{ row }">{{ row.title }}</template>
       </el-table-column>
@@ -57,8 +62,8 @@
           {{ row.tasks.filter((t) => t.status === 'pending').map((t) => t.node_name).join('、') || '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="发起时间" width="160">
-        <template #default="{ row }">{{ fmtDateTime(row.created_at) }}</template>
+      <el-table-column label="提交时间" width="140">
+        <template #default="{ row }">{{ fmtSubmit(row.created_at) }}</template>
       </el-table-column>
       <el-table-column label="操作" width="80" fixed="right">
         <template #default="{ row }">
@@ -211,25 +216,67 @@
         </div>
       </template>
       <template v-if="detail">
-        <el-descriptions :column="2" border size="small" style="margin-bottom: 16px">
-          <el-descriptions-item label="状态">
-            <el-tag size="small" :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
-          </el-descriptions-item>
-          <el-descriptions-item label="流程版本">v{{ detail.definition_version }}</el-descriptions-item>
-          <el-descriptions-item v-if="amountFieldOf(detail)" :label="amountFieldOf(detail).title">
-            {{ amountText(detail) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="发起时间">{{ fmtDateTime(detail.created_at) }}</el-descriptions-item>
-        </el-descriptions>
-        <el-card v-if="detail.form_items?.length" shadow="never" style="margin-bottom: 14px">
-          <template #header><b>表单内容</b><span v-if="permHiddenCount" style="font-size: 12px; color: #c0c4cc; margin-left: 8px">({{ permHiddenCount }} 个字段按权限隐藏)</span></template>
-          <div v-for="f in visibleFormItems" :key="f.id" class="form-value-row">
-            <span class="form-value-label">{{ f.title }}</span>
-            <span class="form-value-text">{{ displayValue(f) }}
-              <el-tag v-if="isEditable(f)" size="small" type="warning" style="margin-left: 4px">可编辑</el-tag>
+        <div class="tk-head">
+          <div class="tk-no">
+            <span class="tk-no-label">审批编号</span>
+            <b class="tk-no-value">{{ detail.ticket_no || String(detail.id).padStart(14, '0') }}</b>
+            <el-icon class="tk-copy" title="复制" @click="copyNo(detail.ticket_no)"><CopyDocument /></el-icon>
+          </div>
+          <div class="tk-meta">
+            <span class="tk-meta-item">
+              <span class="tk-k">状态</span>
+              <el-tag size="small" :type="statusMeta(detail.status).type">{{ statusMeta(detail.status).label }}</el-tag>
+            </span>
+            <span class="tk-meta-item">
+              <span class="tk-k">流程</span>{{ detail.definition_name || '-' }} v{{ detail.definition_version }}
+            </span>
+            <span class="tk-meta-item">
+              <span class="tk-k">提交时间</span>{{ fmtSubmit(detail.created_at) }}
             </span>
           </div>
-        </el-card>
+        </div>
+        <div v-if="detail.form_items?.length" class="tk-form">
+          <div class="tk-form-title">表单内容<span v-if="permHiddenCount" class="tk-form-tip">（{{ permHiddenCount }} 个字段按权限隐藏）</span></div>
+          <div class="tk-form-grid">
+            <div v-for="f in gridFormItems" :key="f.id" class="tk-cell">
+              <span class="tk-cell-k">{{ f.title }}</span>
+              <span class="tk-cell-v" :class="{ 'is-money': f.name === 'AmountInput' }">
+                {{ displayValue(f) }}
+                <el-tag v-if="isEditable(f)" size="small" type="warning" style="margin-left: 4px">可编辑</el-tag>
+              </span>
+            </div>
+            <!-- 明细表格整行展示 -->
+          </div>
+          <!-- TableList / uploads rendered full-width below grid -->
+          <template v-for="f in visibleFormItems" :key="'fw-' + f.id">
+            <div v-if="f.name === 'TableList'" class="tk-full">
+              <span class="tk-cell-k">{{ f.title }}</span>
+              <table class="tk-table" v-if="(detail.form_values?.[f.id] || []).length">
+                <thead>
+                  <tr><th v-for="c in f.props.columns || []" :key="c.id">{{ c.title }}</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, ri) in detail.form_values[f.id]" :key="ri">
+                    <td v-for="c in f.props.columns || []" :key="c.id">
+                      {{ row[c.id] ?? (c.name === 'NumberInput' ? 0 : '') }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <span v-else class="tk-empty-inline">无明细</span>
+            </div>
+            <div v-else-if="f.name === 'ImageUpload' || f.name === 'FileUpload'" class="tk-full">
+              <span class="tk-cell-k">{{ f.title }}</span>
+              <div class="tk-files">
+                <template v-if="(detail.form_values?.[f.id] || []).length">
+                  <el-image v-for="(u, i) in detail.form_values[f.id]" :key="i" :src="u"
+                    :preview-src-list="detail.form_values[f.id]" fit="cover" class="tk-img" />
+                </template>
+                <span v-else class="tk-empty-inline">无附件</span>
+              </div>
+            </div>
+          </template>
+        </div>
         <el-timeline>
           <el-timeline-item v-for="t in detail.tasks" :key="t.id" :timestamp="fmtDateTime(t.created_at)"
             placement="top" :color="timelineColor(t)" :hollow="t.status === 'pending'">
@@ -337,6 +384,17 @@ function statusMeta(s) {
 }
 
 
+function fmtSubmit(v) {
+  if (!v) return '-'
+  const d = new Date(v)
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+async function copyNo(no) {
+  if (!no) return
+  try { await navigator.clipboard.writeText(no); ElMessage.success('已复制') } catch { /* ignore */ }
+}
+
 function amountFieldOf(ticket) {
   const items = ticket?.form_items || []
   const designed = items.find((f) => f.name === 'AmountInput')
@@ -375,6 +433,8 @@ function amountText(ticket) {
 const visibleFormItems = computed(() =>
   (detail.value?.form_items || []).filter((f) => f.name !== 'Description'
     && (detail.value?.my_node_form_perms || {})[f.id] !== 'hidden'))
+const gridFormItems = computed(() =>
+  visibleFormItems.value.filter((f) => !['TableList', 'ImageUpload', 'FileUpload'].includes(f.name)))
 const permHiddenCount = computed(() =>
   (detail.value?.form_items || []).filter((f) => f.name !== 'Description'
     && (detail.value?.my_node_form_perms || {})[f.id] === 'hidden').length)
@@ -401,12 +461,14 @@ function printTicket() {
   const win = window.open('', '_blank')
   win.document.write(`<html><head><title>${d.title} - 审批单</title>
     <style>body{font-family:'PingFang SC',sans-serif;padding:24px;color:#303133}
-    h2{margin-bottom:4px} .meta{color:#909399;font-size:12px;margin-bottom:16px}
+    h2{margin-bottom:4px} .no{font-family:Menlo,monospace;letter-spacing:1px;color:#606266;font-size:15px;margin-bottom:4px}
+    .meta{color:#909399;font-size:12px;margin-bottom:16px}
     table{width:100%;border-collapse:collapse;margin-bottom:16px}
     td,th{border:1px solid #dcdfe6;padding:6px 10px;font-size:13px;text-align:left}
     th{background:#f5f7fa}</style></head><body>
     <h2>${d.title}</h2>
-    <div class="meta">流程: ${d.definition_name || ''} v${d.definition_version} | 状态: ${statusMeta(d.status).label} | 发起: ${fmtDateTime(d.created_at)}</div>
+    <div class="no">审批编号: ${d.ticket_no || String(d.id).padStart(14, '0')}</div>
+    <div class="meta">流程: ${d.definition_name || ''} v${d.definition_version} | 状态: ${statusMeta(d.status).label} | 提交时间: ${fmtSubmit(d.created_at)}</div>
     ${formRows ? `<table><tr><th style="width:140px">表单字段</th><th>内容</th></tr>${formRows}</table>` : ''}
     <table><tr><th>环节</th><th>处理人</th><th>动作</th><th>意见</th><th>时间</th></tr>${rows}</table>
     </body></html>`)
@@ -567,6 +629,44 @@ onMounted(load)
 
 <style scoped>
 .toolbar { display: flex; justify-content: space-between; margin-bottom: 14px; }
-.form-tip { font-size: 12px; color: #c0c4cc; margin-left: 10px; }
+.form-tip { font-size: 12px; color: var(--ph-text-disabled); margin-left: 10px; }
+.tno { font-family: monospace; color: var(--ph-text-secondary); font-size: 12px; letter-spacing: .5px; }
+
+/* ===== ticket head ===== */
+.tk-head { background: var(--ph-primary-light-9); border: 1px solid var(--ph-primary-light-7);
+  border-radius: var(--ph-radius-lg); padding: var(--ph-space-3) var(--ph-space-4); margin-bottom: var(--ph-space-4); }
+.tk-no { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.tk-no-label { font-size: var(--ph-font-xs); color: var(--ph-text-secondary); }
+.tk-no-value { font-size: 16px; letter-spacing: 1px; color: var(--ph-text-primary);
+  font-family: 'SF Mono', Menlo, Consolas, monospace; }
+.tk-copy { cursor: pointer; color: var(--ph-text-secondary); font-size: 14px; }
+.tk-copy:hover { color: var(--ph-primary); }
+.tk-meta { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: var(--ph-font-xs);
+  color: var(--ph-text-regular); align-items: center; }
+.tk-meta-item { display: inline-flex; align-items: center; gap: 5px; }
+.tk-k { color: var(--ph-text-secondary); }
+
+/* ===== form content ===== */
+.tk-form { background: var(--ph-fill-blank, #fff); border: 1px solid var(--ph-border-lighter);
+  border-radius: var(--ph-radius-lg); margin-bottom: var(--ph-space-4); overflow: hidden; }
+.tk-form-title { font-weight: 600; font-size: var(--ph-font-sm); color: var(--ph-text-primary);
+  padding: var(--ph-space-3) var(--ph-space-4); border-bottom: 1px solid var(--ph-border-lighter);
+  background: var(--ph-fill-light); }
+.tk-form-tip { font-weight: 400; color: var(--ph-text-disabled); font-size: var(--ph-font-xs); }
+.tk-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.tk-cell { display: flex; padding: 10px var(--ph-space-4); border-bottom: 1px dashed var(--ph-border-lighter);
+  align-items: baseline; }
+.tk-cell:nth-child(odd) { border-right: 1px dashed var(--ph-border-lighter); }
+.tk-cell-k { width: 96px; flex-shrink: 0; color: var(--ph-text-secondary); font-size: var(--ph-font-xs); }
+.tk-cell-v { color: var(--ph-text-primary); font-size: var(--ph-font-sm); word-break: break-all; flex: 1; }
+.tk-cell-v.is-money { color: var(--ph-danger); font-weight: 700; font-variant-numeric: tabular-nums; }
+.tk-full { padding: 10px var(--ph-space-4); border-top: 1px dashed var(--ph-border-lighter); }
+.tk-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.tk-table th, .tk-table td { border: 1px solid var(--ph-border-lighter); padding: 5px 10px;
+  font-size: var(--ph-font-xs); text-align: left; }
+.tk-table th { background: var(--ph-fill-light); color: var(--ph-text-secondary); font-weight: 600; }
+.tk-files { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.tk-img { width: 64px; height: 64px; border-radius: var(--ph-radius-base); border: 1px solid var(--ph-border-lighter); }
+.tk-empty-inline { color: var(--ph-text-disabled); font-size: var(--ph-font-xs); }
 :deep(.clickable) { cursor: pointer; }
 </style>

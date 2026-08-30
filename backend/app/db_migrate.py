@@ -58,6 +58,12 @@ def ensure_project_workflow_column(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN workflow_id INTEGER"))
             logger.info("added projects.workflow_id column")
         with engine.connect() as conn:
+            tcols2 = [row[1] for row in conn.execute(text("PRAGMA table_info(approval_tickets)")).fetchall()]
+        if tcols2 and "ticket_no" not in tcols2:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE approval_tickets ADD COLUMN ticket_no VARCHAR(32) DEFAULT ''"))
+            logger.info("added approval_tickets.ticket_no column")
+        with engine.connect() as conn:
             tcols = [row[1] for row in conn.execute(text("PRAGMA table_info(approval_tasks)")).fetchall()]
         for col in ("due_at", "reminded_at"):
             if tcols and col not in tcols:
@@ -83,7 +89,7 @@ def ensure_project_workflow_column(engine: Engine) -> None:
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS group_name VARCHAR(64) DEFAULT '默认分组'"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS remark VARCHAR(500) DEFAULT ''"))
             conn.execute(text("ALTER TABLE process_definitions ADD COLUMN IF NOT EXISTS logo JSONB"))
-
+            conn.execute(text("ALTER TABLE approval_tickets ADD COLUMN IF NOT EXISTS ticket_no VARCHAR(32) DEFAULT ''"))
 
 def run_startup_migrations(engine: Engine) -> None:
     rebuild_tasks_status_column(engine)

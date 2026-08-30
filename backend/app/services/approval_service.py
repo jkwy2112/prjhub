@@ -349,6 +349,13 @@ def _persist(db: Session, ticket: ApprovalTicket, wf) -> None:
     db.commit()
 
 
+def _gen_ticket_no() -> str:
+    """审批编号: 年月日时分秒 (20260830153012)."""
+    from datetime import datetime
+
+    return datetime.now().strftime("%Y%m%d%H%M%S")
+
+
 def _form_defaults(definition: ProcessDefinition) -> dict:
     """Every form field gets a typed default so gateway expressions never hit NameError."""
     defaults: dict = {}
@@ -376,6 +383,7 @@ def create_ticket(db: Session, definition_key: str, title: str, submitted_by: in
 
     ticket = ApprovalTicket(
         title=title,
+        ticket_no=_gen_ticket_no(),
         project_id=project_id,
         task_id=task_id,
         definition_id=definition.id,

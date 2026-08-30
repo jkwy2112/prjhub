@@ -65,6 +65,7 @@ class TicketOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    ticket_no: str = ""
     title: str
     project_id: Optional[int]
     task_id: Optional[int]
