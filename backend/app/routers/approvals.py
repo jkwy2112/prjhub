@@ -72,8 +72,14 @@ def get_tree(definition_id: int, db: Session = Depends(get_db), user: User = Dep
 @router.post("", response_model=TicketDetail, status_code=201, summary="发起审批")
 def create_ticket(body: TicketCreate, db: Session = Depends(get_db),
                   user: User = Depends(get_current_user)):
+    title = body.title.strip() or None
+    if not title:
+        definition = db.query(ProcessDefinition).filter(
+            ProcessDefinition.key == body.definition_key,
+            ProcessDefinition.is_active.is_(True)).first()
+        title = (definition.name if definition else None) or "审批单"
     ticket = approval_service.create_ticket(
-        db, body.definition_key, body.title, user.id, body.variables,
+        db, body.definition_key, title, user.id, body.variables,
         project_id=body.project_id, task_id=body.task_id)
     return _detail(db, ticket, user)
 

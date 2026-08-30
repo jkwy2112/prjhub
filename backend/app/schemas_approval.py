@@ -40,7 +40,7 @@ class TreeDeploy(BaseModel):
 
 class TicketCreate(BaseModel):
     definition_key: str
-    title: str = Field(min_length=1, max_length=255)
+    title: str = Field(default="", max_length=255)  # 空则自动取流程名
     variables: dict = Field(default_factory=dict)
     project_id: Optional[int] = None
     task_id: Optional[int] = None

@@ -78,7 +78,6 @@
             <el-option v-for="d in definitions" :key="d.key" :value="d.key" :label="d.name" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题" required><el-input v-model="form.title" maxlength="255" /></el-form-item>
 
         <template v-if="currentDef && currentDef.has_tree">
           <!-- dynamically render the designed form -->
@@ -573,7 +572,6 @@ function openCreate() {
 }
 
 async function submit() {
-  if (!form.title.trim()) return ElMessage.warning('请填写标题')
   let variables
   if (currentDef.value?.has_tree) {
     const missingField = formFields.value.find((f) => f.props?.required &&
@@ -607,9 +605,10 @@ async function submit() {
   }
   creating.value = true
   try {
+    const defName = currentDef.value?.name || definitions.value.find((d) => d.key === form.definition_key)?.name || '审批单'
     await api.post('/approvals', {
       definition_key: form.definition_key,
-      title: form.title,
+      title: defName,
       variables,
     })
     ElMessage.success('审批已发起')
