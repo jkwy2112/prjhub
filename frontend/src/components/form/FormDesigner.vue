@@ -152,9 +152,9 @@ async function doPreviewUpload({ opt }) {
 </script>
 
 <style scoped>
-.fd-layout { display: flex; gap: 14px; height: calc(100vh - 300px); }
+.fd-layout { display: flex; gap: 14px; height: 100%; min-height: 560px; }
 .fd-palette { width: 190px; flex-shrink: 0; background: #fff; border-radius: 8px; padding: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: auto; }
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow-y: auto; }
 .fd-group-name { font-size: 12px; color: #909399; font-weight: 600; margin: 8px 0; }
 .fd-palette-item {
   display: flex; align-items: center; gap: 6px; padding: 8px 10px; margin-bottom: 6px;
@@ -176,7 +176,9 @@ async function doPreviewUpload({ opt }) {
 .fd-field-id { font-size: 11px; color: #c0c4cc; font-family: monospace; }
 .fd-ops { margin-left: auto; display: flex; gap: 2px; }
 .fd-props { width: 300px; flex-shrink: 0; background: #fff; border-radius: 8px; padding: 12px;
-  overflow: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+  overflow-y: auto; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+.fd-props :deep(.el-form-item) { margin-bottom: 10px; }
+.fd-props :deep(.el-form-item__label) { font-weight: 600; color: #303133; }
 .fd-props-head { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; color: #409eff; }
 .fd-props-head b { color: #303133; }
 .fd-col-row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }

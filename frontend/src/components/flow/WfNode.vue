@@ -1,51 +1,63 @@
 <template>
   <div class="wf-seg">
-    <!-- node card -->
-    <div class="wf-card" :class="[`wf-${node.type.toLowerCase()}`, { selected: selected === node, error: hasError }]"
-      :style="{ '--card-color': color }" @click="$emit('select', node)">
-      <span class="wf-del" v-if="node.type !== 'ROOT'" @click.stop="removeSelf"><el-icon><Close /></el-icon></span>
-      <div class="wf-card-head">
-        <el-icon class="wf-icon"><component :is="icon" /></el-icon>
-        <span class="wf-title">{{ node.name || defaultName }}</span>
-        <span v-if="node.type === 'APPROVAL' && multiUsers" class="wf-badge">多人</span>
-        <span v-if="node.type === 'APPROVAL' && node.props?.mode === 'all'" class="wf-badge cs">会签</span>
-        <span v-if="node.type === 'APPROVAL' && node.props?.mode === 'count'" class="wf-badge cs">
-          票签{{ node.props?.count }}
-        </span>
-        <span v-if="node.type === 'APPROVAL' && node.props?.assigneeType === 'runtime'" class="wf-badge rt">发起时指定</span>
-        <span v-if="node.type === 'APPROVAL' && node.props?.refuse === 'TO_BEFORE'" class="wf-badge cs">驳回退回上节点</span>
+    <!-- node card (wflow Node.vue visual spec: 220px, color header, hover shadow) -->
+    <div class="wf-card" :class="[`t-${node.type.toLowerCase()}`, { selected: selected === node }]"
+      :style="{ '--c': color }" @click="$emit('select', node)">
+      <div v-if="node.type !== 'ROOT'" class="wf-del" @click.stop="removeSelf"><el-icon><Close /></el-icon></div>
+
+      <div class="wf-card-in" v-if="node.type === 'ROOT'">
+        <div class="wf-root-row">
+          <el-icon class="wf-root-ic"><Promotion /></el-icon>
+          <div class="wf-root-info">
+            <p class="wf-name">{{ node.name || '发起人' }}</p>
+            <p class="wf-desc">{{ summary }}</p>
+          </div>
+        </div>
       </div>
-      <div class="wf-card-body">{{ summary }}</div>
+
+      <div class="wf-card-in" v-else>
+        <div class="wf-head">
+          <span class="wf-head-ic"><el-icon><component :is="icon" /></el-icon></span>
+          <p class="wf-name">{{ node.name || defaultName }}</p>
+          <span v-if="badges.length" class="wf-badges">
+            <span v-for="b in badges" :key="b" class="wf-badge" :class="b.cls">{{ b.text }}</span>
+          </span>
+        </div>
+        <div class="wf-body-row">
+          <p class="wf-desc">{{ summary }}</p>
+          <el-icon class="wf-arrow"><ArrowRight /></el-icon>
+        </div>
+        <span v-if="hasError" class="wf-err-dot" />
+      </div>
     </div>
 
-    <!-- insert plus (below card / below branch group) -->
-    <div v-if="node.type !== 'ROOT' && node.type !== 'CONDITIONS' && node.type !== 'CONCURRENTS'"
-      class="wf-plus-row">
-      <el-popover placement="bottom-start" trigger="click" width="290">
+    <!-- insert plus (wflow: circle btn on the vertical line) -->
+    <div v-if="node.type !== 'CONDITIONS' && node.type !== 'CONCURRENTS'" class="wf-plus-row">
+      <el-popover placement="right-start" trigger="hover" width="290">
         <template #reference>
           <span class="wf-plus-btn"><el-icon><Plus /></el-icon></span>
         </template>
         <div class="wf-menu">
           <div class="wf-menu-item" @click="insert('APPROVAL')">
-            <el-icon style="color: #ff943e"><User /></el-icon>审批人
+            <span class="mi-ic" style="background: #ff943e"><el-icon><Stamp /></el-icon></span>审批人
           </div>
           <div class="wf-menu-item" @click="insert('CC')">
-            <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
-          </div>
-          <div class="wf-menu-item" @click="insert('TRIGGER')">
-            <el-icon style="color: #15bc83"><Link /></el-icon>触发器
+            <span class="mi-ic" style="background: #3296fa"><el-icon><Promotion /></el-icon></span>抄送人
           </div>
           <div class="wf-menu-item" @click="insert('CONDITIONS')">
-            <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
+            <span class="mi-ic" style="background: #15bc83"><el-icon><Share /></el-icon></span>条件分支
           </div>
           <div class="wf-menu-item" @click="insert('CONCURRENTS')">
-            <el-icon style="color: #718dff"><Operation /></el-icon>并行分支
+            <span class="mi-ic" style="background: #718dff"><el-icon><Operation /></el-icon></span>并行分支
+          </div>
+          <div class="wf-menu-item" @click="insert('TRIGGER')">
+            <span class="mi-ic" style="background: #9254de"><el-icon><Link /></el-icon></span>触发器
           </div>
         </div>
       </el-popover>
     </div>
 
-    <!-- branch group (dingtalk-style cover lines create fork/join visuals, see wflow ProcessTree) -->
+    <!-- branch group: wflow fork/join rails + spine + cover lines -->
     <div v-if="node.type === 'CONDITIONS' || node.type === 'CONCURRENTS'" class="wf-branch-group">
       <div class="wf-branch-add" @click="addBranch">
         <el-button size="small" round>添加{{ node.type === 'CONDITIONS' ? '条件' : '分支' }}</el-button>
@@ -54,21 +66,26 @@
         <div v-for="(branch, i) in node.branches" :key="i" class="wf-branch-col">
           <span v-if="i === 0" class="cover tl" /><span v-if="i === 0" class="cover bl" />
           <span v-if="i === node.branches.length - 1" class="cover tr" /><span v-if="i === node.branches.length - 1" class="cover br" />
-          <div class="wf-branch-col-head" :class="{ 'head-error': errorNodes?.has?.(branch) }" @click="$emit('select', branch)">
-            <span class="wf-branch-col-move" v-if="node.type === 'CONDITIONS' && i > 0"
-              @click.stop="moveBranch(i, -1)"><el-icon><ArrowLeft /></el-icon></span>
-            <span class="wf-branch-col-title">{{ branch.name || `条件${i + 1}` }}</span>
-            <span class="wf-branch-col-move" v-if="node.type === 'CONDITIONS' && i < node.branches.length - 1"
-              @click.stop="moveBranch(i, 1)"><el-icon><ArrowRight /></el-icon></span>
-            <span class="wf-branch-col-del" v-if="node.branches.length > 2"
-              @click.stop="removeBranch(i)"><el-icon><Close /></el-icon></span>
+
+          <div class="wf-cond-head" @click="$emit('select', branch)">
+            <span class="wf-cond-lv">优先级{{ i + 1 }}</span>
+            <p class="wf-cond-name">{{ branch.name || `条件${i + 1}` }}</p>
+            <span class="wf-cond-ops">
+              <el-icon v-if="node.type === 'CONDITIONS' && i > 0" class="op" @click.stop="moveBranch(i, -1)"><ArrowLeft /></el-icon>
+              <el-icon v-if="node.type === 'CONDITIONS' && i < node.branches.length - 1" class="op"
+                @click.stop="moveBranch(i, 1)"><ArrowRight /></el-icon>
+              <el-icon v-if="node.branches.length > 2" class="op del" @click.stop="node.branches.splice(i, 1)"><Close /></el-icon>
+            </span>
           </div>
+
           <div class="wf-branch-chain">
             <WfNode v-if="branch.childNode" :node="branch.childNode" :selected="selected"
               :error-nodes="errorNodes"
               @select="$emit('select', $event)" @self-remove="branch.childNode = null"
               @changed="$emit('changed')" />
-            <div v-else class="wf-branch-empty" @click="$emit('select', branch)">点击设置分支内容</div>
+            <div v-else class="wf-branch-empty" @click="$emit('select', branch)">
+              <el-icon><Plus /></el-icon>
+            </div>
           </div>
         </div>
       </div>
@@ -83,7 +100,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { Plus, Close, User, Share, Operation, ArrowLeft, ArrowRight, Stamp, Promotion, Link } from '@element-plus/icons-vue'
+import { Plus, Close, ArrowRight, ArrowLeft, Stamp, Promotion, Share, Operation, Link } from '@element-plus/icons-vue'
 
 defineOptions({ name: 'WfNode' })
 
@@ -92,46 +109,65 @@ const props = defineProps({
   selected: { type: Object, default: null },
   errorNodes: { type: Object, default: null },
 })
-const hasError = computed(() => !!props.errorNodes?.has?.(props.node))
 const emit = defineEmits(['select', 'self-remove', 'changed'])
 
 const iconMap = {
-  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation, CC: Promotion, TRIGGER: Link,
+  ROOT: Promotion, APPROVAL: Stamp, CONDITIONS: Share, CONCURRENTS: Operation,
+  CC: Promotion, TRIGGER: Link,
 }
 const icon = computed(() => iconMap[props.node.type] || Stamp)
-const defaultName = computed(() => ({ ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支', CC: '抄送人', TRIGGER: '触发器' }[props.node.type] || ''))
+const defaultName = computed(() => ({
+  ROOT: '发起人', APPROVAL: '审批', CONDITIONS: '条件分支', CONCURRENTS: '并行分支',
+  CC: '抄送人', TRIGGER: '触发器',
+}[props.node.type] || ''))
 const color = computed(() => ({
-  ROOT: '#409EFF', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff', CC: '#3296fa', TRIGGER: '#9254de',
-}[props.node.type] || '#909399'))
-const multiUsers = computed(() => (props.node.props?.users?.length || 0) > 1 || props.node.props?.assigneeType === 'runtime')
+  ROOT: '#8f959e', APPROVAL: '#ff943e', CONDITIONS: '#15bc83', CONCURRENTS: '#718dff',
+  CC: '#3296fa', TRIGGER: '#9254de',
+}[props.node.type] || '#8f959e'))
+const hasError = computed(() => !!props.errorNodes?.has?.(props.node)
+  || !!(props.node.type === 'CONDITION' && props.errorNodes?.has?.(props.node)))
+
+const badges = computed(() => {
+  const n = props.node
+  const out = []
+  if (n.type === 'APPROVAL') {
+    if ((n.props?.users || []).length > 1 || n.props?.assigneeType === 'runtime') out.push({ text: '多人', cls: 'b-blue' })
+    if (n.props?.mode === 'all') out.push({ text: '会签', cls: 'b-orange' })
+    if (n.props?.mode === 'next') out.push({ text: '依次', cls: 'b-orange' })
+    if (n.props?.mode === 'count') out.push({ text: `票${n.props?.count}`, cls: 'b-orange' })
+    if (n.props?.assigneeType === 'runtime') out.push({ text: '发起时指定', cls: 'b-blue' })
+    if (n.props?.assigneeType === 'form') out.push({ text: '表单联系人', cls: 'b-green' })
+    if (n.props?.assigneeType === 'self') out.push({ text: '发起人', cls: 'b-green' })
+    if (n.props?.refuse === 'TO_BEFORE') out.push({ text: '驳回退回上节点', cls: 'b-gray' })
+    if (n.props?.refuse === 'TO_NODE') out.push({ text: '驳回指定节点', cls: 'b-gray' })
+    if (n.props?.timeout?.enabled) out.push({ text: `限时${n.props.timeout.value}${n.props.timeout.unit === 'H' ? '时' : '天'}`, cls: 'b-red' })
+  }
+  return out.slice(0, 3)
+})
 
 const summary = computed(() => {
   const n = props.node
-  if (n.type === 'ROOT') return '所有人可发起'
+  if (n.type === 'ROOT') return '所有人'
+  if (n.type === 'APPROVAL') {
+    if (n.props?.assigneeType === 'self') return '发起人自己审批'
+    if (n.props?.assigneeType === 'form') return '表单联系人审批'
+    if (n.props?.assigneeType === 'runtime') return '发起时选择审批人'
+    const c = (n.props?.users || []).length
+    return c ? `${c} 名成员` : '未设置审批人'
+  }
   if (n.type === 'CC') {
-    if (n.props?.assigneeType === 'runtime') return '发起时指定'
-    return `${(n.props?.users || []).length || '未指定'} 人接收通知`
+    if (n.props?.assigneeType === 'runtime') return '发起时选择'
+    const c = (n.props?.users || []).length
+    return c ? `${c} 人接收通知` : '未设置抄送人'
   }
   if (n.type === 'TRIGGER') {
-    return `${n.props?.method || 'GET'} ${(n.props?.url || '未配置').slice(0, 30)}`
+    return `${n.props?.method || 'GET'} ${(n.props?.url || '未配置').replace(/^https?:\/\//, '').slice(0, 24)}`
   }
-  if (n.type === 'APPROVAL') {
-    if (n.props?.assigneeType === 'runtime') return `发起时指定 · ${modeLabel(n.props?.mode)}`
-    const names = (n.props?.users || []).length
-    return `${names ? names + ' 人' : '未指定'} · ${modeLabel(n.props?.mode)}`
+  if (n.type === 'CONDITIONS' || n.type === 'CONCURRENTS') {
+    return `${n.branches?.length || 0} 个分支`
   }
-  if (n.type === 'CONDITIONS') {
-    const empty = n.branches?.filter((b) => !b.props?.groups?.some((g) => g.conditions?.length)).length
-    return `${n.branches?.length || 0} 个条件分支${empty ? ` · ${empty} 个默认` : ''}`
-  }
-  return `${n.branches?.length || 0} 个并行分支`
+  return ''
 })
-
-function modeLabel(mode) {
-  if (mode === 'all') return '会签(全部通过)'
-  if (mode === 'count') return '票签(N人通过)'
-  return '或签(任一通过)'
-}
 
 function insert(type) {
   const child = newNode(type)
@@ -142,14 +178,16 @@ function insert(type) {
 }
 
 function newNode(type) {
+  if (type === 'APPROVAL') {
+    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2,
+      nobody: { handler: 'to_admin' }, refuse: 'TO_END', refuseTarget: '', formField: '',
+      formPerms: {}, timeout: { enabled: false, unit: 'H', value: 24, handler: 'NOTIFY' } }, childNode: null }
+  }
   if (type === 'TRIGGER') {
     return { type, name: '触发器', props: { url: '', method: 'POST' }, childNode: null }
   }
   if (type === 'CC') {
     return { type, name: '抄送人', props: { assigneeType: 'users', users: [] }, childNode: null }
-  }
-  if (type === 'APPROVAL') {
-    return { type, name: '审批节点', props: { assigneeType: 'users', users: [], mode: 'any', count: 2 }, childNode: null }
   }
   if (type === 'CONDITIONS') {
     return {
@@ -172,9 +210,9 @@ function newNode(type) {
 
 function addBranch() {
   const n = props.node
-  if (n.branches.length >= 8) return  // wflow convention: max 8 branches
+  if (n.branches.length >= 8) return
   if (n.type === 'CONDITIONS') {
-    const defIdx = n.branches.findIndex((b) => !b.props?.groups?.some((g) => g.conditions?.length))
+    const defIdx = n.branches.findIndex((b) => !(b.props?.groups || []).some((g) => (g.conditions || []).length))
     const branch = { type: 'CONDITION', name: `条件${n.branches.length}`, childNode: null,
       props: { groupsType: 'AND', groups: [{ groupType: 'AND', conditions: [] }] } }
     if (defIdx >= 0) n.branches.splice(defIdx, 0, branch)
@@ -182,18 +220,14 @@ function addBranch() {
   } else {
     n.branches.push({ type: 'BRANCH', name: `分支${n.branches.length + 1}`, childNode: null })
   }
-}
-
-function removeBranch(i) {
-  const n = props.node
-  // keep >= 2 branches by design; deleting is disabled in UI when only 2 remain
-  n.branches.splice(i, 1)
+  emit('changed')
 }
 
 function moveBranch(i, delta) {
   const arr = props.node.branches
   const [item] = arr.splice(i, 1)
   arr.splice(i + delta, 0, item)
+  emit('changed')
 }
 
 function removeSelf() {
@@ -208,81 +242,119 @@ function removeSelf() {
 </script>
 
 <style scoped>
-.wf-seg { display: flex; flex-direction: column; align-items: center; }
+/* ===== wflow Node.vue visual spec ===== */
+.wf-seg { display: flex; flex-direction: column; align-items: center; width: 100%; }
+
 .wf-card {
-  position: relative; width: 260px; background: #fff; border-radius: 8px; cursor: pointer;
-  border: 1.5px solid var(--card-color); box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  transition: box-shadow .15s, transform .15s;
+  position: relative; width: 220px; background: #fff; border-radius: 5px; cursor: pointer;
+  box-shadow: 0 0 5px 0 #d8d8d8; transition: box-shadow .2s;
 }
-.wf-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.13); transform: translateY(-1px); }
-.wf-card.selected { outline: 2px solid var(--card-color); outline-offset: 1px; }
-.wf-card.error { border-color: #f56c6c; box-shadow: 0 0 0 2px rgba(245, 108, 108, 0.25); }
-.wf-card.error::after {
-  content: '!'; position: absolute; right: -10px; top: -10px; width: 20px; height: 20px;
-  border-radius: 50%; background: #f56c6c; color: #fff; font-size: 13px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center;
+.wf-card:hover { box-shadow: 0 0 4px 0 var(--c, #409eff); }
+.wf-card.selected { box-shadow: 0 0 4px 2px var(--c, #409eff); }
+.wf-card.t-ROOT { box-shadow: none; background: transparent; }
+
+.wf-card-in { padding: 0; }
+.wf-head {
+  display: flex; align-items: center; gap: 6px; padding: 8px 10px; min-height: 34px;
+  border-radius: 5px 5px 0 0; background: var(--c);
 }
-.wf-branch-col-head.head-error { border-color: #f56c6c; color: #f56c6c; background: #fef0f0; }
-.wf-card-head { display: flex; align-items: center; gap: 6px; padding: 8px 12px 2px; color: var(--card-color); }
-.wf-title { font-size: 14px; font-weight: 600; color: #303133; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wf-badge { font-size: 11px; padding: 0 7px; border-radius: 9px; border: 1px solid #e1f3d8; background: #f0f9eb; color: #67c23a; }
-.wf-badge.cs { background: #fdf6ec; color: #e6a23c; border-color: #faecd8; }
-.wf-badge.rt { background: #ecf5ff; color: #409eff; border-color: #d9ecff; }
-.wf-card-body { padding: 4px 12px 10px; font-size: 12px; color: #909399; }
+.wf-head-ic { display: flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  color: #fff; font-size: 14px; flex-shrink: 0; }
+.wf-name { color: #fff; font-size: 13px; font-weight: 600; flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.wf-badges { display: flex; gap: 3px; flex-shrink: 0; }
+.wf-badge { font-size: 10px; line-height: 14px; padding: 0 5px; border-radius: 2px;
+  background: rgba(255,255,255,.25); color: #fff; }
+.wf-body-row { display: flex; align-items: center; padding: 8px 10px; min-height: 36px; }
+.wf-desc { flex: 1; color: #646a73; font-size: 12px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.wf-arrow { color: #b3b9c3; font-size: 12px; flex-shrink: 0; }
+
+/* ROOT pill */
+.wf-root-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.wf-root-ic { width: 34px; height: 34px; border-radius: 50%; background: #8f959e22; color: #8f959e;
+  display: flex; align-items: center; justify-content: center; font-size: 17px; flex-shrink: 0; }
+.wf-root-info .wf-name { color: #303133; }
+.wf-root-info .wf-desc { margin-top: 1px; }
+
 .wf-del {
-  position: absolute; top: -9px; right: -9px; width: 20px; height: 20px; border-radius: 50%;
-  background: #f56c6c; color: #fff; display: none; align-items: center; justify-content: center;
-  font-size: 12px; cursor: pointer; z-index: 2;
+  position: absolute; top: -8px; right: -8px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; color: #f56c6c; border: 1px solid #f1f1f1; display: none;
+  align-items: center; justify-content: center; font-size: 11px; cursor: pointer; z-index: 3;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
 }
 .wf-card:hover .wf-del { display: flex; }
-.wf-plus-row { display: flex; justify-content: center; padding: 6px 0; position: relative; }
-.wf-plus-row::before { content: ""; position: absolute; left: 50%; top: -6px; bottom: 50%; width: 2px; background: #cacaca; }
-.wf-plus-btn {
-  width: 28px; height: 28px; border-radius: 50%; background: #409eff; color: #fff; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(64,158,255,.4);
-  transition: transform .15s;
-}
-.wf-plus-btn:hover { transform: scale(1.12); }
-.wf-menu { display: flex; flex-wrap: wrap; gap: 8px; }
-.wf-menu-item {
-  display: flex; align-items: center; gap: 6px; width: 115px; padding: 9px 10px; cursor: pointer;
-  background: #f8f9f9; border-radius: 8px; font-size: 13px; color: #606266;
-}
-.wf-menu-item:hover { background: #fff; box-shadow: 0 0 8px 2px #d6d6d6; }
+.wf-del:hover { background: #f56c6c; color: #fff; }
 
-/* dingtalk-style branch group: top/bottom rails + per-column spine + cover lines */
+.wf-err-dot { position: absolute; right: -9px; top: 12px; width: 17px; height: 17px; border-radius: 50%;
+  background: #f56c6c; color: #fff; font-size: 11px; display: flex; align-items: center;
+  justify-content: center; }
+.wf-err-dot::after { content: '!'; font-weight: 700; }
+
+/* ===== vertical line + plus (wflow: 2px #cacaca, round blue btn) ===== */
+.wf-plus-row { position: relative; display: flex; justify-content: center; padding: 10px 0; width: 100%; }
+.wf-plus-row::before { content: ''; position: absolute; top: -8px; bottom: 50%; left: 50%;
+  transform: translateX(-1px); width: 2px; background: #cacaca; }
+.wf-seg > .wf-card + .wf-plus-row::before { top: -8px; }
+.wf-plus-btn {
+  width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #1890ff;
+  border: 1px solid #1890ff33; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; font-size: 15px; transition: all .15s; z-index: 2;
+}
+.wf-plus-btn:hover { background: #1890ff; color: #fff; transform: scale(1.1);
+  box-shadow: 0 2px 8px #1890ff66; }
+
+.wf-menu { display: flex; flex-direction: column; gap: 4px; }
+.wf-menu-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer;
+  border-radius: 6px; font-size: 13px; color: #606266; }
+.wf-menu-item:hover { background: #f5f7fa; color: #1890ff; }
+.mi-ic { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 13px; flex-shrink: 0; }
+
+/* ===== branch group (wflow: rails top/bottom + column spine + covers) ===== */
 .wf-branch-group {
   position: relative; width: 100%; display: flex; flex-direction: column; align-items: center;
-  padding: 18px 14px 14px; background: rgba(64,158,255,.02);
-  border-top: 2px solid #cccccc; border-bottom: 2px solid #cccccc;
+  border-top: 2px solid #cacaca; border-bottom: 2px solid #cacaca; padding: 26px 10px 4px;
+  margin-top: 2px;
 }
-.wf-branch-add { position: absolute; top: -16px; left: 50%; transform: translateX(-50%); z-index: 3; }
-.wf-branch-cols { display: flex; justify-content: center; flex-wrap: wrap; }
+.wf-branch-add { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); z-index: 4; }
+.wf-branch-cols { display: flex; justify-content: center; flex-wrap: nowrap; }
 .wf-branch-col {
   position: relative; display: flex; flex-direction: column; align-items: center;
-  min-width: 270px; padding: 10px 14px;
-  border-top: 2px solid #cccccc; border-bottom: 2px solid #cccccc; background: transparent;
+  min-width: 240px; padding: 0 10px;
 }
+.wf-branch-col:not(:first-child) { border-left: 2px solid #cacaca; }
 .wf-branch-col::before {
-  content: ""; position: absolute; top: 0; left: calc(50% - 1px); width: 2px; height: 100%;
+  content: ''; position: absolute; top: 0; left: calc(50% - 1px); width: 2px; height: 14px;
   background: #cacaca;
 }
 .cover { position: absolute; width: 50%; height: 4px; background: #fff; z-index: 1; }
-.cover.tl { top: -2px; left: -1px; }
-.cover.tr { top: -2px; right: -1px; }
-.cover.bl { bottom: -2px; left: -1px; }
-.cover.br { bottom: -2px; right: -1px; }
-.wf-branch-col-head {
-  position: relative; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 4px 10px; background: #f0faf7; border: 1px solid #15bc83; color: #15bc83;
-  border-radius: 14px; font-size: 12px; font-weight: 600; cursor: pointer; margin-bottom: 10px;
+.cover.tl { top: -3px; left: -1px; }
+.cover.tr { top: -3px; right: -1px; }
+.cover.bl { bottom: -3px; left: -1px; }
+.cover.br { bottom: -3px; right: -1px; }
+
+/* condition head (wflow ConditionNode: green title + priority + ops) */
+.wf-cond-head {
+  position: relative; z-index: 3; display: flex; align-items: center; gap: 5px; max-width: 210px;
+  margin: 6px 0 4px; padding: 3px 8px; cursor: pointer;
 }
-.wf-branch-col-head:hover { background: #e2f7f0; }
-.wf-branch-col-move, .wf-branch-col-del { color: #909399; display: flex; align-items: center; }
-.wf-branch-col-del:hover { color: #f56c6c; }
-.wf-branch-chain { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; }
+.wf-cond-lv { font-size: 10px; color: #a8abb2; flex-shrink: 0; }
+.wf-cond-name { color: #15bc83; font-size: 12px; font-weight: 600; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 110px; }
+.wf-cond-ops { display: none; align-items: center; gap: 4px; flex-shrink: 0; }
+.wf-cond-head:hover .wf-cond-ops { display: flex; }
+.wf-cond-head:hover .wf-cond-lv { display: none; }
+.wf-cond-ops .op { font-size: 12px; color: #a8abb2; padding: 2px; }
+.wf-cond-ops .op:hover { color: #1890ff; }
+.wf-cond-ops .del:hover { color: #f56c6c; }
+
+.wf-branch-chain { position: relative; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; width: 100%; }
 .wf-branch-empty {
-  width: 220px; text-align: center; padding: 14px 0; color: #c0c4cc; font-size: 12px;
-  border: 1px dashed #dcdfe6; border-radius: 8px; cursor: pointer; background: #fff;
+  width: 200px; height: 46px; margin: 8px 0; border: 1.5px dashed #dcdfe6; border-radius: 5px;
+  display: flex; align-items: center; justify-content: center; color: #c0c4cc; cursor: pointer;
+  background: #fff;
 }
+.wf-branch-empty:hover { border-color: #1890ff; color: #1890ff; }
 </style>

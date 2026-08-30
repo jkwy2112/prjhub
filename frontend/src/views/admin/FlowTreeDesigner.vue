@@ -54,9 +54,11 @@
         </el-card>
       </div>
       <div v-show="tab === 'form'" class="wf-form-pane">
-        <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+        <el-alert type="info" :closable="false" style="margin-bottom: 12px; flex-shrink: 0"
           title="表单字段供发起人填写, 字段ID 可在流程设计的条件分支中引用 (数字/文本/多选支持比较)" />
-        <FormDesigner :items="formItems" />
+        <div style="flex: 1; min-height: 0">
+          <FormDesigner :items="formItems" />
+        </div>
       </div>
       <div v-show="tab === 'process'" class="wf-canvas">
         <div v-if="errors.length" class="wf-errors">
@@ -64,10 +66,9 @@
             <el-icon><Warning /></el-icon>{{ e.message }}
           </div>
         </div>
-        <div class="wf-root-row">
-          <div class="wf-start-pill">发起人 · 所有人</div>
-          <div class="wf-link"></div>
-        </div>
+        <div class="wf-flow-col">
+        <div class="wf-start-pill"><el-icon style="margin-right: 6px"><Promotion /></el-icon>发起人 · 所有人</div>
+        <div class="wf-link"></div>
         <WfNode :node="tree" :selected="selected" :error-nodes="errorNodes" @select="selected = $event" @self-remove="tree.childNode = null" />
         <template v-if="!tree.childNode">
           <div class="wf-plus-row">
@@ -77,19 +78,19 @@
               </template>
               <div class="wf-menu">
                 <div class="wf-menu-item" @click="addFirst('APPROVAL')">
-                  <el-icon style="color: #ff943e"><User /></el-icon>审批人
+                  <span class="mi-ic" style="background: #ff943e"><el-icon><User /></el-icon></span>审批人
                 </div>
                 <div class="wf-menu-item" @click="addFirst('CC')">
-                  <el-icon style="color: #3296fa"><Promotion /></el-icon>抄送人
+                  <span class="mi-ic" style="background: #3296fa"><el-icon><Promotion /></el-icon></span>抄送人
                 </div>
                 <div class="wf-menu-item" @click="addFirst('TRIGGER')">
-                  <el-icon style="color: #15bc83"><Link /></el-icon>触发器
+                  <span class="mi-ic" style="background: #9254de"><el-icon><Link /></el-icon></span>触发器
                 </div>
                 <div class="wf-menu-item" @click="addFirst('CONDITIONS')">
-                  <el-icon style="color: #15bc83"><Share /></el-icon>条件分支
+                  <span class="mi-ic" style="background: #15bc83"><el-icon><Share /></el-icon></span>条件分支
                 </div>
                 <div class="wf-menu-item" @click="addFirst('CONCURRENTS')">
-                  <el-icon style="color: #718dff"><Operation /></el-icon>并行分支
+                  <span class="mi-ic" style="background: #718dff"><el-icon><Operation /></el-icon></span>并行分支
                 </div>
               </div>
             </el-popover>
@@ -97,7 +98,8 @@
           <p class="wf-empty-tip">从上方「+」开始搭建流程</p>
         </template>
         <div v-if="tree.childNode" class="wf-link"></div>
-        <div v-if="tree.childNode" class="wf-end-pill">流程结束 (通过 / 驳回)</div>
+        <div v-if="tree.childNode" class="wf-end-pill">流程结束</div>
+        </div>
       </div>
 
       <div class="wf-props" v-if="tab === 'process'">
@@ -689,22 +691,26 @@ onMounted(async () => {
   padding: 8px 12px; border-bottom: 1px solid #ebeef5; }
 .wf-toolbar-left { display: flex; align-items: center; gap: 8px; }
 .wf-body { flex: 1; display: flex; min-height: 0; }
-.wf-form-pane { flex: 1; overflow: auto; }
+.wf-form-pane { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.wf-form-pane :deep(.fd-layout) { flex: 1; }
 .wf-base-pane { flex: 1; overflow: auto; padding-top: 10px; }
 .logo-preview { width: 46px; height: 46px; border-radius: 10px; display: inline-flex;
   align-items: center; justify-content: center; vertical-align: middle; }
 .check-err { color: #f56c6c; font-size: 12px; padding: 2px 0; display: flex; justify-content: center; }
-.wf-canvas { flex: 1; overflow: auto; padding: 24px 40px 60px;
+.wf-canvas { flex: 1; overflow: auto; padding: 24px 40px 80px;
   background: radial-gradient(circle, #eef1f5 1px, transparent 1px) 0 0 / 20px 20px, #f7f8fa; }
-.wf-root-row { display: flex; flex-direction: column; align-items: center; }
-.wf-start-pill, .wf-end-pill { padding: 6px 22px; border-radius: 18px; font-size: 13px; color: #fff; }
-.wf-start-pill { background: #409eff; }
+.wf-flow-col { display: flex; flex-direction: column; align-items: center; margin: 0 auto; width: max-content; }
+.wf-start-pill, .wf-end-pill { display: flex; align-items: center; padding: 6px 22px;
+  border-radius: 18px; font-size: 13px; color: #fff; }
+.wf-start-pill { background: #1890ff; box-shadow: 0 2px 6px #1890ff55; }
+.wf-end-pill { background: #a8abb2; box-shadow: 0 2px 6px #a8abb255; }
 .wf-end-pill { background: #909399; }
 .wf-link { width: 2px; height: 22px; background: #cacaca; margin: 0 auto; }
-.wf-plus-row { display: flex; justify-content: center; padding: 6px 0; }
-.wf-plus-btn { width: 28px; height: 28px; border-radius: 50%; background: #409eff; color: #fff;
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 2px 6px rgba(64,158,255,.4); }
+.wf-plus-row { position: relative; display: flex; justify-content: center; padding: 8px 0; width: 100%; }
+.wf-plus-btn { width: 30px; height: 30px; border-radius: 50%; background: #fff; color: #1890ff;
+  border: 1px solid #1890ff33; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all .15s; }
+.wf-plus-btn:hover { background: #1890ff; color: #fff; transform: scale(1.1); box-shadow: 0 2px 8px #1890ff66; }
 .wf-empty-tip { text-align: center; color: #c0c4cc; font-size: 12px; margin-top: 10px; }
 .wf-errors {
   width: 420px; margin: 0 auto 12px; background: #fef0f0; border: 1px solid #fde2e2;
@@ -715,6 +721,12 @@ onMounted(async () => {
   padding: 3px 0; cursor: pointer;
 }
 .wf-error-item:hover { text-decoration: underline; }
+.wf-menu { display: flex; flex-direction: column; gap: 4px; }
+.wf-menu-item { display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer;
+  border-radius: 6px; font-size: 13px; color: #606266; }
+.wf-menu-item:hover { background: #f5f7fa; color: #1890ff; }
+.mi-ic { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 13px; flex-shrink: 0; }
 .perm-row { display: flex; align-items: center; justify-content: space-between; padding: 4px 0; }
 .perm-title { font-size: 12px; color: #606266; }
 .wf-menu { display: flex; flex-wrap: wrap; gap: 8px; }
