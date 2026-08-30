@@ -94,7 +94,7 @@
     <!-- child chain -->
     <WfNode v-if="node.childNode" :node="node.childNode" :selected="selected"
       :error-nodes="errorNodes"
-      @select="$emit('select', $event)" @self-remove="removeSelf" @changed="$emit('changed')" />
+      @select="$emit('select', $event)" @self-remove="removeChild" @changed="$emit('changed')" />
   </div>
 </template>
 
@@ -238,6 +238,13 @@ function removeSelf() {
   } else {
     emit('self-remove')
   }
+}
+
+// my direct child asked to be removed -> replace it with ITS child chain
+function removeChild() {
+  const n = props.node
+  n.childNode = n.childNode?.childNode || null
+  emit('changed')
 }
 </script>
 

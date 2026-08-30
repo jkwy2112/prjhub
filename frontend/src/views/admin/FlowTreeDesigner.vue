@@ -71,31 +71,7 @@
         <div class="wf-link"></div>
         <WfNode :node="tree" :selected="selected" :error-nodes="errorNodes" @select="selected = $event" @self-remove="tree.childNode = null" />
         <template v-if="!tree.childNode">
-          <div class="wf-plus-row">
-            <el-popover placement="bottom-start" trigger="click" width="290">
-              <template #reference>
-                <span class="wf-plus-btn"><el-icon><Plus /></el-icon></span>
-              </template>
-              <div class="wf-menu">
-                <div class="wf-menu-item" @click="addFirst('APPROVAL')">
-                  <span class="mi-ic" style="background: #ff943e"><el-icon><User /></el-icon></span>审批人
-                </div>
-                <div class="wf-menu-item" @click="addFirst('CC')">
-                  <span class="mi-ic" style="background: #3296fa"><el-icon><Promotion /></el-icon></span>抄送人
-                </div>
-                <div class="wf-menu-item" @click="addFirst('TRIGGER')">
-                  <span class="mi-ic" style="background: #9254de"><el-icon><Link /></el-icon></span>触发器
-                </div>
-                <div class="wf-menu-item" @click="addFirst('CONDITIONS')">
-                  <span class="mi-ic" style="background: #15bc83"><el-icon><Share /></el-icon></span>条件分支
-                </div>
-                <div class="wf-menu-item" @click="addFirst('CONCURRENTS')">
-                  <span class="mi-ic" style="background: #718dff"><el-icon><Operation /></el-icon></span>并行分支
-                </div>
-              </div>
-            </el-popover>
-          </div>
-          <p class="wf-empty-tip">从上方「+」开始搭建流程</p>
+          <p class="wf-empty-tip">点击上方「+」添加第一个节点</p>
         </template>
         <div v-if="tree.childNode" class="wf-link"></div>
         <div v-if="tree.childNode" class="wf-end-pill">流程结束</div>
