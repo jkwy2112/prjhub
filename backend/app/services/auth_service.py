@@ -19,7 +19,7 @@ def authenticate_local(db: Session, username: str, password: str) -> Optional[Us
 
 
 def authenticate_ldap(db: Session, username: str, password: str) -> Optional[User]:
-    result = ldap_service.authenticate(username, password)
+    result = ldap_service.authenticate(db, username, password)
     if result is None:
         return None
     user = _provision(
